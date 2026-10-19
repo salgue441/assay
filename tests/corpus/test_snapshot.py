@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -30,6 +31,16 @@ def test_checks_out_each_epoch_at_its_commit(repo: LocalRepo, tmp_path: Path) ->
     assert first.root == tmp_path / "cache" / "owner__project" / repo.commits[0]
     assert (first.commit, first.epoch, first.repo) == (repo.commits[0], 0, "owner/project")
     assert first.tree_hash != second.tree_hash
+
+
+def test_snapshot_records_the_commit_time(make_repo: MakeRepo, tmp_path: Path) -> None:
+    repo = make_repo("owner/dated")
+    repo.commit({"a.py": ""}, at="2025-03-01T10:00:00+02:00")
+
+    snapshot = GitSnapshotFetcher(tmp_path / "cache").fetch(repo.spec(), 0)
+
+    assert snapshot.committed_at == datetime(2025, 3, 1, 8, 0, tzinfo=UTC)
+    assert snapshot.committed_at.utcoffset() == timedelta(hours=2)
 
 
 def test_snapshot_records_source_metadata(repo: LocalRepo, tmp_path: Path) -> None:
