@@ -8,7 +8,6 @@ import ast
 import inspect
 import re
 from collections.abc import Iterable, Iterator
-from typing import ClassVar
 
 import tree_sitter_python as tspython
 from tree_sitter import Language, Node, Parser
@@ -44,10 +43,12 @@ class PythonExtractor:
     thread.
     """
 
-    language: ClassVar[SourceLanguage] = SourceLanguage.PYTHON
-
     def __init__(self) -> None:
         self._parser = Parser(_LANGUAGE)
+
+    @property
+    def language(self) -> SourceLanguage:
+        return SourceLanguage.PYTHON
 
     def extract(self, source: str, *, module: str, path: str = "") -> SymbolInventory:
         data = source.encode("utf-8")
