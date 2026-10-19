@@ -21,9 +21,20 @@ from assay.corpus.snapshot import (
     SnapshotError,
     SnapshotFetcher,
 )
+from assay.corpus.tables import (
+    SOURCES,
+    SYMBOLS,
+    UNITS,
+    SymbolRow,
+    store_snapshot_corpus,
+    symbol_rows,
+)
 from assay.corpus.units import Unit, UnitPolicy, changed_units, select_units
 
 __all__ = [
+    "SOURCES",
+    "SYMBOLS",
+    "UNITS",
     "Checkout",
     "CommitSha",
     "CorpusBuilder",
@@ -39,6 +50,7 @@ __all__ = [
     "SnapshotError",
     "SnapshotFetcher",
     "SourceFile",
+    "SymbolRow",
     "Unit",
     "UnitPolicy",
     "changed_units",
@@ -46,4 +58,6 @@ __all__ = [
     "get_layout",
     "load_manifest",
     "select_units",
+    "store_snapshot_corpus",
+    "symbol_rows",
 ]
