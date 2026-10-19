@@ -3,7 +3,7 @@ from pathlib import Path
 
 from assay.corpus import CorpusBuilder, GitSnapshotFetcher, UnitPolicy, changed_units
 
-from .local_repo import LocalRepo
+from ..local_repo import LocalRepo
 
 MakeRepo = Callable[..., LocalRepo]
 
