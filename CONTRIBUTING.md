@@ -23,21 +23,18 @@ By participating you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md) (
 ```bash
 git clone https://github.com/salgue441/assay.git
 cd assay
-uv sync
-cp .env.example .env     # add provider keys locally; never commit
-uv run pre-commit install
+./scripts/setup-env.sh   # or scripts\setup-env.ps1 on Windows
 ```
 
-Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+Requires [uv](https://docs.astral.sh/uv/); the project Python (3.12) is pinned in `.python-version`. The setup script creates a dedicated conda env named `assay` when conda is installed (otherwise a uv-managed `.venv`), installs the locked dependencies and creates `.env` from `.env.example`. Add provider keys to `.env` locally; never commit it.
 
 ## Before opening a pull request
 
 ```bash
-uv run ruff format .
-uv run ruff check .
-uv run mypy src
-uv run pytest
+./scripts/check.sh        # or scripts\check.ps1; add --fix / -Fix to apply formatting first
 ```
+
+This runs the same steps as CI: formatting, lint, type-check, tests (excluding real LLM calls) and the GitHub Actions audit.
 
 - Keep pull requests focused: one logical change each.
 - Add or update tests; every metric needs fixtures with known expected values.

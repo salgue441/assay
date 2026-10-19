@@ -78,9 +78,8 @@ Results will be reported with confidence intervals, including negative and null 
 # Requirements: Python 3.12+, uv, an API key for at least one LLM provider
 git clone https://github.com/salgue441/assay.git
 cd assay
-uv sync
-
-cp .env.example .env            # add provider keys; never commit .env
+./scripts/setup-env.sh          # env + locked deps + .env (Windows: scripts\setup-env.ps1)
+                                # then add provider keys to .env; never commit it
 
 uv run assay build-corpus       # clone pinned repos, extract symbols
 uv run assay generate           # produce documentation with the configured subject model
@@ -97,10 +96,15 @@ Models, prompt versions, rubric version, weights, thresholds and per-run budget 
 ```text
 assay/
 ├── config/            # models, prompts, rubric, weights, thresholds, budgets
-├── data/              # DVC-tracked: sources, units, documents, ratings (Parquet)
+├── data/              # DVC-tracked raw layer (Parquet), local mode; S3 in CI
 ├── docs/
 │   └── SAD.md         # solution architecture document
+├── infra/             # Terraform: S3 bucket, GitHub OIDC role, budget alarm
+├── transform/         # dbt-duckdb project: staging, intermediate, marts
 ├── src/assay/
+│   ├── orchestrate/   # Dagster assets, partitions, asset checks, jobs
+│   ├── contracts/     # Pandera schemas per table
+│   ├── baseline/      # learned baseline scorer
 │   ├── corpus/        # repo pinning, snapshotting, license checks
 │   ├── extract/       # tree-sitter symbol inventory
 │   ├── generate/      # subject-model harness
