@@ -3,6 +3,7 @@ Build the source corpus: pinned repositories, their source files and the
 documentation units cut from them.
 """
 
+from assay.corpus.builder import CorpusBuilder, SnapshotCorpus
 from assay.corpus.discovery import SourceFile, discover_sources
 from assay.corpus.layout import LanguageLayout, PythonLayout, get_layout
 from assay.corpus.manifest import (
@@ -18,6 +19,7 @@ from assay.corpus.units import Unit, UnitPolicy, changed_units, select_units
 
 __all__ = [
     "CommitSha",
+    "CorpusBuilder",
     "DisallowedLicenseError",
     "GitSnapshotFetcher",
     "LanguageLayout",
@@ -26,6 +28,7 @@ __all__ = [
     "PythonLayout",
     "RepoSpec",
     "Snapshot",
+    "SnapshotCorpus",
     "SnapshotError",
     "SnapshotFetcher",
     "SourceFile",
