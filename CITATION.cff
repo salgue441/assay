@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use Assay in your research, please cite it using these metadata."
+type: software
+title: "Assay: LLM Documentation Evaluation and Drift Monitoring"
+abstract: >-
+  An open, reproducible harness that scores LLM-generated technical
+  documentation with deterministic checks and an LLM judge, validates the score
+  against blind human ratings, and monitors it for quality drift.
+authors:
+  - family-names: Salguero
+    given-names: Carlos
+    website: "https://csalguero.me"
+repository-code: "https://github.com/salgue441/assay"
+license: MIT
+version: 0.1.0
+keywords:
+  - llm-evaluation
+  - llm-as-a-judge
+  - documentation
+  - drift-detection
+  - calibration
+  - reproducibility

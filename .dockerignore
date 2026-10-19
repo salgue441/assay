@@ -1,0 +1,61 @@
+# Keep the build context small and free of secrets.
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.streamlit/secrets.toml
+secrets/
+credentials*.json
+
+# --- VCS and CI ---
+.git
+.gitignore
+.github
+
+# --- Python artifacts and caches ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# --- Data and run outputs (mount as volumes instead) ---
+data/
+corpus_cache/
+.cache/
+runs/
+outputs/
+mlruns/
+mlartifacts/
+*.duckdb
+*.duckdb.wal
+.dvc/cache
+.dvc/tmp
+
+# --- Docs and non-runtime files ---
+docs/
+*.md
+!README.md
+reports/
+site/
+tests/
+.ipynb_checkpoints/
+
+# --- Editors and OS ---
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

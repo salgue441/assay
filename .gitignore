@@ -1,0 +1,84 @@
+# --- Secrets and local config (never commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.streamlit/secrets.toml
+secrets/
+credentials*.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+pip-wheel-metadata/
+
+# --- Environments and tooling ---
+.venv/
+venv/
+env/
+.python-version
+.uv-cache/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# --- Notebooks ---
+.ipynb_checkpoints/
+
+# --- Data (versioned with DVC, not git) ---
+# DVC creates .dvc pointer files and per-directory .gitignore entries;
+# commit the pointers, not the data.
+/data/**/*.parquet
+/data/**/*.duckdb
+/data/**/*.csv
+/data/raw/
+/data/cache/
+*.duckdb
+*.duckdb.wal
+.dvc/cache
+.dvc/tmp
+.dvc/config.local
+
+# --- Cloned corpus repositories ---
+/corpus_cache/
+/.cache/
+
+# --- Experiment tracking ---
+mlruns/
+mlartifacts/
+wandb/
+
+# --- LLM run artifacts and logs ---
+/runs/
+/outputs/
+*.log
+logs/
+
+# --- Generated reports (rebuilt in CI from stored results) ---
+/reports/build/
+/site/
+
+# --- Editors and OS ---
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+*.swp
+.DS_Store
+Thumbs.db
