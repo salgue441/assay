@@ -1,0 +1,90 @@
+# Assay default configuration. Everything that affects results lives here
+# and is hashed into each run for reproducibility.
+#
+# Model identifiers are placeholders: set them to the exact, versioned ids you
+# use and keep them pinned for the whole study.
+
+run:
+  seed: 20261019
+  budget_usd: null # hard cap per run; overridden by ASSAY_BUDGET_USD
+
+storage:
+  root: data # local path, or s3://<bucket>/assay in CI; overridden by ASSAY_STORAGE_ROOT
+  duckdb_path: data/marts/assay.duckdb
+
+corpus:
+  manifest: config/repos.yaml # pinned repos: url, commit SHA, license
+  allowed_licenses: [MIT, Apache-2.0, BSD-3-Clause, BSD-2-Clause, ISC]
+  languages: [python, typescript, go]
+  unit_kinds: [module, class, function]
+
+generation:
+  prompt_version: v1
+  subject_models:
+    - name: subject-a
+      provider: bedrock # bedrock | openai | ollama
+      model_id: REPLACE_ME
+      temperature: 0.0
+
+judge:
+  rubric_version: v1
+  runs_per_criterion: 3 # N repeated judgments to measure variance
+  variance_study:
+    temperatures: [0.0, 0.7]
+    subset_size: 50
+  criteria: [accuracy, clarity, consistency]
+  models:
+    - name: judge-a
+      provider: bedrock
+      model_id: REPLACE_ME
+      temperature: 0.0
+    # Cross-family judge for the self-preference check:
+    # - name: judge-b
+    #   provider: openai
+    #   model_id: REPLACE_ME
+    #   temperature: 0.0
+
+scoring:
+  # Prior weights (sum to 1); fitted weights are learned on the development split only.
+  weights:
+    referential_integrity: 0.25
+    symbol_coverage: 0.15
+    structural_completeness: 0.10
+    readability: 0.05
+    accuracy: 0.20
+    clarity: 0.15
+    consistency: 0.10
+  critical_failures: # force a `reject` decision; the raw composite is still stored
+    referential_integrity_below: 0.90
+  routing: # applies to non-rejected documents
+    publish_at_or_above: 80
+    escalate_below: 50
+
+evaluation:
+  split:
+    development_fraction: 0.6
+    group_by: repo # no repo appears in both splits
+    stratify_by: [language, unit_kind, contamination_group]
+  weight_fit:
+    target: overall_rating
+    shrink_to_prior: true # lambda chosen by repo-grouped CV on development
+  golden_set:
+    source_split: development
+    size: 100
+  baseline:
+    models: [ridge, hist_gradient_boosting]
+  bootstrap_resamples: 10000
+  targets:
+    spearman_rho: 0.70
+    weighted_kappa: 0.60
+    judge_band_stability: 0.90
+
+drift:
+  mode: replay # replay: backfill manifest epochs; live: append newest SHA each run
+  schedule_cron: "0 12 * * 1" # weekly, live mode
+  ks_alpha: 0.01
+  psi_floor: 0.2
+  ewma_lambda: 0.2
+  consecutive_runs_to_alert: 2
+  judge_kappa_floor: 0.55
+  triggers_on_change: [subject_model, judge_model, prompt_hash, rubric_version]

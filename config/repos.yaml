@@ -1,0 +1,17 @@
+# Pinned corpus manifest. Only permissively licensed public repositories.
+# Fill in real entries; always pin exact commit SHAs.
+#
+# `epochs` is an ordered list of SHAs: the first is the baseline used for
+# calibration, each later one is a drift epoch (new/changed units are scored).
+# Live mode appends the newest default-branch SHA at run time.
+# `created_at` places the repo in a contamination group relative to model cutoffs.
+#
+# repos:
+#   - url: https://github.com/OWNER/REPO
+#     license: MIT
+#     language: python
+#     created_at: 2024-03-01
+#     epochs:
+#       - 0000000000000000000000000000000000000000 # baseline
+#       - 1111111111111111111111111111111111111111
+repos: []
