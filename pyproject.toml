@@ -98,7 +98,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
-addopts = "-ra --strict-markers --cov=assay --cov-report=term-missing"
+addopts = "-ra --strict-markers --import-mode=importlib --cov=assay --cov-report=term-missing"
 markers = [
     "llm: tests that call a real LLM provider (skipped in CI by default)",
 ]
