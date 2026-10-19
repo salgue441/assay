@@ -13,6 +13,7 @@ from assay.corpus.manifest import (
     RepoSpec,
     load_manifest,
 )
+from assay.corpus.units import Unit, UnitPolicy, changed_units, select_units
 
 __all__ = [
     "CommitSha",
@@ -23,7 +24,11 @@ __all__ = [
     "PythonLayout",
     "RepoSpec",
     "SourceFile",
+    "Unit",
+    "UnitPolicy",
+    "changed_units",
     "discover_sources",
     "get_layout",
     "load_manifest",
+    "select_units",
 ]
