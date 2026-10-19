@@ -1,3 +1,5 @@
+import subprocess
+import sys
 from textwrap import dedent
 
 import pytest
@@ -240,3 +242,30 @@ def test_never_raises_and_lines_stay_in_range(source: str) -> None:
     module = inventory.symbols[0]
     for symbol in inventory.symbols:
         assert 1 <= symbol.start_line <= symbol.end_line <= module.end_line
+
+
+def test_large_files_extract_without_crashing() -> None:
+    """
+    Regression: py-tree-sitter 0.26.0 corrupts node memory on files of a few
+    hundred definitions and the interpreter segfaults. Run in a subprocess so
+    a crash fails this test instead of killing the whole test run.
+    """
+
+    source = "".join(f"def f{i}(x: int) -> int:\n    return x\n\n" for i in range(1000))
+    count_symbols = (
+        "import sys\n"
+        "from assay.extract import PythonExtractor\n"
+        "print(len(PythonExtractor().extract(sys.stdin.read(), module='big').symbols))\n"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", count_symbols],
+        input=source,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    assert result.returncode == 0, f"extraction crashed (exit {result.returncode}): {result.stderr}"
+    assert result.stdout.strip() == "1001"
