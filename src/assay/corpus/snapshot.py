@@ -9,6 +9,7 @@ import shutil
 import stat
 import subprocess
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 from typing import Protocol
@@ -26,10 +27,10 @@ class SnapshotError(RuntimeError):
 
 class Snapshot(Record):
     """
-    One repository checked out at one epoch's commit: a `sources` row.
+    One repository at one epoch's commit: a `sources` row.
 
-    `tree_hash` is git's content hash of the checked-out tree, so two
-    snapshots with the same tree hash have identical files.
+    `tree_hash` is git's content hash of the commit's tree, so two snapshots
+    with the same tree hash have identical files.
     """
 
     repo: str
@@ -42,12 +43,21 @@ class Snapshot(Record):
     license: str
     language: SourceLanguage
     created_at: date
-    root: Path = Field(exclude=True)
-    """Local checkout; machine-specific, so never serialized."""
+
+
+@dataclass(frozen=True, slots=True)
+class Checkout:
+    """
+    A snapshot's files on this machine. The location is machine-specific, so
+    it stays out of the stored `Snapshot`.
+    """
+
+    snapshot: Snapshot
+    root: Path
 
 
 class SnapshotFetcher(Protocol):
-    def fetch(self, repo: RepoSpec, epoch: int) -> Snapshot:
+    def fetch(self, repo: RepoSpec, epoch: int) -> Checkout:
         """Make `repo` available locally at `repo.epochs[epoch]`."""
         ...
 
@@ -66,7 +76,7 @@ class GitSnapshotFetcher:
         self._git_executable = git
         self._timeout_seconds = timeout_seconds
 
-    def fetch(self, repo: RepoSpec, epoch: int) -> Snapshot:
+    def fetch(self, repo: RepoSpec, epoch: int) -> Checkout:
         if not 0 <= epoch < len(repo.epochs):
             msg = f"{repo.name} has {len(repo.epochs)} epochs; epoch {epoch} does not exist"
             raise IndexError(msg)
@@ -76,7 +86,7 @@ class GitSnapshotFetcher:
         if not self._is_clean_checkout(target, commit):
             self._checkout(repo.url, commit, target)
 
-        return Snapshot(
+        snapshot = Snapshot(
             repo=repo.name,
             epoch=epoch,
             commit=commit,
@@ -87,8 +97,8 @@ class GitSnapshotFetcher:
             license=repo.license,
             language=repo.language,
             created_at=repo.created_at,
-            root=target,
         )
+        return Checkout(snapshot=snapshot, root=target)
 
     def _is_clean_checkout(self, target: Path, commit: str) -> bool:
         if not (target / ".git").is_dir():
