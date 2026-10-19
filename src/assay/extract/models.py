@@ -9,9 +9,11 @@ parsing source code only; no LLM is involved.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any, Self
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import Field, computed_field, model_validator
+
+from assay.records import Record
 
 
 class SourceLanguage(StrEnum):
@@ -31,12 +33,10 @@ class SymbolKind(StrEnum):
     METHOD = "method"
 
 
-class Symbol(BaseModel):
+class Symbol(Record):
     """
     One named, documentable thing in a source file.
     """
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
 
     qualified_name: str = Field(min_length=1)
     name: str = Field(min_length=1)
@@ -45,15 +45,6 @@ class Symbol(BaseModel):
     docstring: str | None
     start_line: int = Field(ge=1)
     end_line: int = Field(ge=1)
-
-    @model_validator(mode="before")
-    @classmethod
-    def _drop_computed_fields(cls, data: Any) -> Any:
-        # Serialized rows carry computed fields; accept them on reload without
-        # relaxing `extra="forbid"` for real input.
-        if isinstance(data, dict):
-            return {k: v for k, v in data.items() if k not in cls.model_computed_fields}
-        return data
 
     @model_validator(mode="after")
     def _check_consistency(self) -> Self:
@@ -78,15 +69,13 @@ class Symbol(BaseModel):
         return not self.name.startswith("_")
 
 
-class SymbolInventory(BaseModel):
+class SymbolInventory(Record):
     """
     All symbols extracted from one source file.
 
     Qualified names are unique within an inventory: they key the `symbols`
     table together with the snapshot hash.
     """
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
 
     module: str = Field(min_length=1)
     path: str
