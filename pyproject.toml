@@ -1,0 +1,113 @@
+[project]
+name = "assay"
+version = "0.1.0"
+description = "Evaluate LLM-generated documentation, validate the score against human ratings, and monitor quality drift."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Carlos Salguero" }]
+requires-python = ">=3.12"
+keywords = ["llm-evaluation", "llm-as-a-judge", "documentation", "drift-detection", "calibration"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "rich>=13.7",
+    "tenacity>=8.3",
+    "duckdb>=1.0",
+    "pyarrow>=16.0",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "tree-sitter>=0.23",
+    "tree-sitter-python>=0.23",
+    "tree-sitter-typescript>=0.23",
+    "tree-sitter-go>=0.23",
+    "scipy>=1.13",
+    "statsmodels>=0.14",
+    "scikit-learn>=1.5",
+    "krippendorff>=0.6",
+    "textstat>=0.7",
+    "pandera>=0.20",
+    "dagster>=1.8",
+    "dagster-dbt>=0.24",
+    "dbt-duckdb>=1.8",
+]
+
+[project.optional-dependencies]
+bedrock = ["boto3>=1.34"]
+openai = ["openai>=1.40"]
+local = ["ollama>=0.3"]
+app = ["streamlit>=1.37", "plotly>=5.22", "matplotlib>=3.9"]
+track = ["mlflow>=2.14"]
+data = ["dvc[s3]>=3.50"]
+all = ["assay[bedrock,openai,local,app,track,data]"]
+
+[project.scripts]
+assay = "assay.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-cov>=5.0",
+    "hypothesis>=6.100",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "pandas-stubs>=2.2",
+    "types-PyYAML>=6.0",
+    "pre-commit>=3.7",
+    "dagster-webserver>=1.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/assay"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "PL", "NPY", "PD", "RUF"]
+ignore = ["PLR0913", "PLR2004"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PLR2004", "S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["krippendorff.*", "textstat.*", "statsmodels.*", "scipy.*", "sklearn.*", "tree_sitter_python.*", "tree_sitter_typescript.*", "tree_sitter_go.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --cov=assay --cov-report=term-missing"
+markers = [
+    "llm: tests that call a real LLM provider (skipped in CI by default)",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["assay"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = false
