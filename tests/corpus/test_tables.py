@@ -15,7 +15,7 @@ from assay.corpus import (
 )
 from assay.storage import ParquetStore, Partition
 
-from .local_repo import LocalRepo
+from ..local_repo import LocalRepo
 
 MakeRepo = Callable[..., LocalRepo]
 

@@ -6,7 +6,7 @@ import pytest
 
 from assay.corpus import GitSnapshotFetcher, SnapshotError
 
-from .local_repo import LocalRepo
+from ..local_repo import LocalRepo
 
 MakeRepo = Callable[..., LocalRepo]
 

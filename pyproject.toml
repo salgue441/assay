@@ -110,3 +110,6 @@ source = ["assay"]
 fail_under = 80
 show_missing = true
 skip_covered = false
+
+[tool.dagster]
+module_name = "assay.orchestrate.definitions"
