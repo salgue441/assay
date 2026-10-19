@@ -9,11 +9,11 @@ import shutil
 import stat
 import subprocess
 from collections.abc import Callable
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Protocol
 
-from pydantic import Field
+from pydantic import AwareDatetime, Field
 
 from assay.corpus.manifest import CommitSha, RepoSpec
 from assay.extract import SourceLanguage
@@ -36,6 +36,9 @@ class Snapshot(Record):
     epoch: int = Field(ge=0)
     commit: CommitSha
     tree_hash: str = Field(pattern=r"^[0-9a-f]{40}$")
+    committed_at: AwareDatetime
+    """When the commit was made: no code in the snapshot is newer, which dates
+    units for the per-unit contamination check against model training cutoffs."""
     license: str
     language: SourceLanguage
     created_at: date
@@ -78,6 +81,9 @@ class GitSnapshotFetcher:
             epoch=epoch,
             commit=commit,
             tree_hash=self._git(target, "rev-parse", "HEAD^{tree}"),
+            committed_at=datetime.fromisoformat(
+                self._git(target, "show", "--no-patch", "--format=%cI", "HEAD")
+            ),
             license=repo.license,
             language=repo.language,
             created_at=repo.created_at,
