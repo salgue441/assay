@@ -1,22 +1,31 @@
 # Assay default configuration. Everything that affects results lives here
 # and is hashed into each run for reproducibility.
 #
+# Relative paths resolve against the directory Assay runs from (the project
+# root). Any value can be overridden with an ASSAY_<SECTION>__<KEY>
+# environment variable, for example ASSAY_STORAGE__ROOT=/tmp/assay or
+# ASSAY_CORPUS__UNITS__MIN_LINES=5; values are parsed as YAML.
+#
 # Model identifiers are placeholders: set them to the exact, versioned ids you
 # use and keep them pinned for the whole study.
 
 run:
   seed: 20261019
-  budget_usd: null # hard cap per run; overridden by ASSAY_BUDGET_USD
+  budget_usd: null # hard cap per run in USD; null means no cap
 
 storage:
-  root: data # local path, or s3://<bucket>/assay in CI; overridden by ASSAY_STORAGE_ROOT
+  root: data # local directory for the Parquet tables
   duckdb_path: data/marts/assay.duckdb
 
 corpus:
-  manifest: config/repos.yaml # pinned repos: url, commit SHA, license
+  manifest: config/repos.yaml # pinned repos: url, commit SHAs, license
+  cache_dir: corpus_cache # local git checkouts, one directory per commit
   allowed_licenses: [MIT, Apache-2.0, BSD-3-Clause, BSD-2-Clause, ISC]
   languages: [python, typescript, go]
-  unit_kinds: [module, class, function]
+  units: # which symbols become documentation units
+    kinds: [module, class, function]
+    min_lines: 3
+    include_private: false
 
 generation:
   prompt_version: v1
