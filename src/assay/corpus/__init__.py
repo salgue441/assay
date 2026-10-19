@@ -14,10 +14,17 @@ from assay.corpus.manifest import (
     RepoSpec,
     load_manifest,
 )
-from assay.corpus.snapshot import GitSnapshotFetcher, Snapshot, SnapshotError, SnapshotFetcher
+from assay.corpus.snapshot import (
+    Checkout,
+    GitSnapshotFetcher,
+    Snapshot,
+    SnapshotError,
+    SnapshotFetcher,
+)
 from assay.corpus.units import Unit, UnitPolicy, changed_units, select_units
 
 __all__ = [
+    "Checkout",
     "CommitSha",
     "CorpusBuilder",
     "DisallowedLicenseError",

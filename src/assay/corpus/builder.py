@@ -48,14 +48,15 @@ class CorpusBuilder:
         self._extractors = extractors
 
     def build(self, repo: RepoSpec, epoch: int) -> SnapshotCorpus:
-        snapshot = self._fetcher.fetch(repo, epoch)
+        checkout = self._fetcher.fetch(repo, epoch)
+        snapshot = checkout.snapshot
         layout = self._layouts(repo.language)
         extractor = self._extractors(repo.language)
 
         inventories: list[SymbolInventory] = []
         units: list[Unit] = []
         for source in discover_sources(
-            snapshot.root,
+            checkout.root,
             layout,
             excluded_dirs=self._excluded_dirs,
             max_file_bytes=self._max_file_bytes,

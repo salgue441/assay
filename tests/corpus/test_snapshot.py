@@ -29,26 +29,34 @@ def test_checks_out_each_epoch_at_its_commit(repo: LocalRepo, tmp_path: Path) ->
     assert (first.root / "pkg" / "mod.py").read_text(encoding="utf-8") == "x = 1\n"
     assert (second.root / "pkg" / "mod.py").read_text(encoding="utf-8") == "x = 2\n"
     assert first.root == tmp_path / "cache" / "owner__project" / repo.commits[0]
-    assert (first.commit, first.epoch, first.repo) == (repo.commits[0], 0, "owner/project")
-    assert first.tree_hash != second.tree_hash
+    assert (first.snapshot.commit, first.snapshot.epoch, first.snapshot.repo) == (
+        repo.commits[0],
+        0,
+        "owner/project",
+    )
+    assert first.snapshot.tree_hash != second.snapshot.tree_hash
 
 
 def test_snapshot_records_the_commit_time(make_repo: MakeRepo, tmp_path: Path) -> None:
     repo = make_repo("owner/dated")
     repo.commit({"a.py": ""}, at="2025-03-01T10:00:00+02:00")
 
-    snapshot = GitSnapshotFetcher(tmp_path / "cache").fetch(repo.spec(), 0)
+    checkout = GitSnapshotFetcher(tmp_path / "cache").fetch(repo.spec(), 0)
 
-    assert snapshot.committed_at == datetime(2025, 3, 1, 8, 0, tzinfo=UTC)
-    assert snapshot.committed_at.utcoffset() == timedelta(hours=2)
+    assert checkout.snapshot.committed_at == datetime(2025, 3, 1, 8, 0, tzinfo=UTC)
+    assert checkout.snapshot.committed_at.utcoffset() == timedelta(hours=2)
 
 
 def test_snapshot_records_source_metadata(repo: LocalRepo, tmp_path: Path) -> None:
-    snapshot = GitSnapshotFetcher(tmp_path / "cache").fetch(repo.spec(license="Apache-2.0"), 0)
+    spec = repo.spec(license="Apache-2.0")
 
-    row = snapshot.model_dump()
-    assert row["license"] == "Apache-2.0"
-    assert "root" not in row
+    snapshot = GitSnapshotFetcher(tmp_path / "cache").fetch(spec, 0).snapshot
+
+    assert (snapshot.license, snapshot.language, snapshot.created_at) == (
+        "Apache-2.0",
+        spec.language,
+        spec.created_at,
+    )
 
 
 def test_reuses_a_clean_checkout(repo: LocalRepo, tmp_path: Path) -> None:
@@ -79,9 +87,9 @@ def test_rebuilds_a_corrupted_checkout(repo: LocalRepo, tmp_path: Path) -> None:
     root = fetcher.fetch(repo.spec(), 0).root
     (root / ".git" / "HEAD").write_text("garbage\n", encoding="utf-8")
 
-    snapshot = fetcher.fetch(repo.spec(), 0)
+    checkout = fetcher.fetch(repo.spec(), 0)
 
-    assert snapshot.commit == repo.commits[0]
+    assert checkout.snapshot.commit == repo.commits[0]
     assert (root / "pkg" / "mod.py").read_text(encoding="utf-8") == "x = 1\n"
 
 
@@ -89,10 +97,10 @@ def test_replaces_a_leftover_partial_checkout(repo: LocalRepo, tmp_path: Path) -
     partial = tmp_path / "cache" / "owner__project" / f"{repo.commits[0]}.partial"
     (partial / "junk").mkdir(parents=True)
 
-    snapshot = GitSnapshotFetcher(tmp_path / "cache").fetch(repo.spec(), 0)
+    checkout = GitSnapshotFetcher(tmp_path / "cache").fetch(repo.spec(), 0)
 
     assert not partial.exists()
-    assert (snapshot.root / "pkg" / "mod.py").exists()
+    assert (checkout.root / "pkg" / "mod.py").exists()
 
 
 def test_unknown_commit_raises_snapshot_error(repo: LocalRepo, tmp_path: Path) -> None:
