@@ -35,6 +35,7 @@ from assay.llm import Provider
 
 ENV_PREFIX = "ASSAY_"
 _NESTING = "__"
+_WEIGHT_TOLERANCE = 1e-9
 
 
 class SettingsError(ValueError):
@@ -145,13 +146,49 @@ class GenerationSettings(_Section):
         return PromptTemplate.load(self.prompt_dir, self.prompt_version)
 
 
+class CriticalFailureSettings(_Section):
+    referential_integrity_below: float = Field(ge=0, le=1)
+    """A document citing a smaller share of resolvable names is rejected."""
+
+
+class RoutingSettings(_Section):
+    publish_at_or_above: float = Field(ge=0, le=100)
+    escalate_below: float = Field(ge=0, le=100)
+
+    @model_validator(mode="after")
+    def _check_order(self) -> Self:
+        if self.escalate_below > self.publish_at_or_above:
+            msg = "escalate_below must not exceed publish_at_or_above"
+            raise ValueError(msg)
+        return self
+
+
+class ScoringSettings(_Section):
+    weights: dict[str, float] = Field(min_length=1)
+    """Prior weights per metric or judged criterion; fitted weights replace
+    them after calibration on the development split."""
+    critical_failures: CriticalFailureSettings
+    routing: RoutingSettings
+
+    @model_validator(mode="after")
+    def _check_weights(self) -> Self:
+        negative = sorted(name for name, weight in self.weights.items() if weight < 0)
+        if negative:
+            msg = f"weights must not be negative: {', '.join(negative)}"
+            raise ValueError(msg)
+        if abs(sum(self.weights.values()) - 1.0) > _WEIGHT_TOLERANCE:
+            msg = f"weights must sum to 1, got {sum(self.weights.values()):.6f}"
+            raise ValueError(msg)
+        return self
+
+
 class Settings(_Section):
     run: RunSettings
     storage: StorageSettings
     corpus: CorpusSettings
     generation: GenerationSettings
     judge: dict[str, Any] = {}
-    scoring: dict[str, Any] = {}
+    scoring: ScoringSettings
     evaluation: dict[str, Any] = {}
     drift: dict[str, Any] = {}
 

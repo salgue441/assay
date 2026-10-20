@@ -51,6 +51,11 @@ def project(tmp_path: Path, make_repo: Callable[[str], LocalRepo]) -> Project:
                     "prompt_dir": str(PROJECT_ROOT / "config" / "prompts" / "generation"),
                     "subjects": [{"name": "writer", "provider": "ollama", "model_id": "fake:1b"}],
                 },
+                "scoring": {
+                    "weights": {"referential_integrity": 1.0},
+                    "critical_failures": {"referential_integrity_below": 0.9},
+                    "routing": {"publish_at_or_above": 80, "escalate_below": 50},
+                },
             }
         ),
         encoding="utf-8",
