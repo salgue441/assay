@@ -51,6 +51,7 @@ coverage.xml
 /data/cache/
 /data/reports/
 /data/golden_set/
+/data/drift/
 *.duckdb
 *.duckdb.wal
 .dvc/cache

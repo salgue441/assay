@@ -4,6 +4,7 @@ from pathlib import Path
 
 from assay.calibrate.golden import (
     freeze_golden,
+    golden_kappa,
     golden_version,
     read_active_golden,
     select_golden,
@@ -11,6 +12,7 @@ from assay.calibrate.golden import (
 )
 from assay.calibrate.study import RatedDocument
 
+from ..scoring.fixtures import judgment
 from .test_study import join, rating, score
 
 NOW = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
@@ -79,3 +81,36 @@ def test_a_frozen_set_is_written_and_read_back_as_active(tmp_path: Path) -> None
     assert path.name == f"{golden.version}.json"
     assert read_active_golden(tmp_path) == golden
     assert read_active_golden(tmp_path / "missing") is None
+
+
+def rated(levels: list[int]) -> list[RatedDocument]:
+    return join(
+        [score(f"k{i}") for i in range(len(levels))],
+        [rating(f"k{i}", accuracy=level) for i, level in enumerate(levels)],
+    )
+
+
+def test_the_judge_agrees_perfectly_with_a_matching_golden_set() -> None:
+    levels = [1, 2, 3, 4, 5]
+    golden = freeze_golden(rated(levels), frozen_at=NOW, scorer_version="s", rubric_hash="h")
+    judgments = [
+        judgment(f"k{i}", "accuracy", level, run=run)
+        for i, level in enumerate(levels)
+        for run in range(3)
+    ]
+
+    assert golden_kappa(golden, judgments, criteria=["accuracy"]) == {"accuracy": 1.0}
+
+
+def test_the_median_run_counts_and_unrelated_grades_are_ignored() -> None:
+    golden = freeze_golden(rated([1, 5]), frozen_at=NOW, scorer_version="s", rubric_hash="h")
+    judgments = [
+        judgment("k0", "accuracy", 1, run=0),
+        judgment("k0", "accuracy", 5, run=1),
+        judgment("k0", "accuracy", 1, run=2),
+        judgment("k1", "accuracy", 5),
+        judgment("k1", "clarity", 1),
+        judgment("other", "accuracy", 1),
+    ]
+
+    assert golden_kappa(golden, judgments, criteria=["accuracy", "clarity"]) == {"accuracy": 1.0}

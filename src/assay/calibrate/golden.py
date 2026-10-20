@@ -10,12 +10,15 @@ import hashlib
 import json
 import math
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
+from statistics import median
 
+from assay.calibrate.agreement import weighted_kappa
 from assay.calibrate.study import RatedDocument
+from assay.judge import Judgment
 
 ACTIVE = "active"
 """File naming the version in use; one golden set is active at a time."""
@@ -151,3 +154,34 @@ def read_active_golden(directory: Path) -> GoldenSet | None:
 
 def _rank(seed: int, document_id: str) -> str:
     return hashlib.sha256(f"{seed}:golden:{document_id}".encode()).hexdigest()
+
+
+def golden_kappa(
+    golden: GoldenSet, judgments: Iterable[Judgment], *, criteria: Sequence[str]
+) -> dict[str, float]:
+    """
+    Quadratic-weighted kappa per criterion between the judge's median grade
+    over its runs and the frozen human consensus, over the golden documents
+    the judge graded. A criterion where kappa is undefined is left out.
+    """
+
+    consensus = {d.document_id: d.criteria for d in golden.documents}
+    runs: dict[tuple[str, str], list[int]] = defaultdict(list)
+    for judgment in judgments:
+        if judgment.document_id in consensus and judgment.criterion in criteria:
+            runs[(judgment.document_id, judgment.criterion)].append(judgment.score)
+
+    kappa = {}
+    for criterion in criteria:
+        pairs = [
+            (math.floor(median(grades) + 0.5), consensus[document_id][criterion])
+            for (document_id, name), grades in sorted(runs.items())
+            if name == criterion and criterion in consensus[document_id]
+        ]
+        if not pairs:
+            continue
+        try:
+            kappa[criterion] = weighted_kappa([j for j, _ in pairs], [h for _, h in pairs])
+        except ValueError:
+            continue
+    return kappa
