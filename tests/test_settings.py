@@ -25,6 +25,14 @@ MINIMAL = {
         "prompt_dir": str(PROJECT_ROOT / "config" / "prompts" / "generation"),
         "subjects": [{"name": "writer", "provider": "ollama", "model_id": "phi4-mini"}],
     },
+    "judge": {
+        "rubric_version": "v1",
+        "rubric_dir": str(PROJECT_ROOT / "config" / "rubrics"),
+        "runs_per_criterion": 2,
+        "criteria": ["accuracy", "clarity"],
+        "variance_study": {"temperatures": [0.0], "subset_size": 1},
+        "models": [{"name": "grader", "provider": "ollama", "model_id": "phi4-mini"}],
+    },
     "scoring": {
         "weights": {"referential_integrity": 0.5, "readability": 0.5},
         "critical_failures": {"referential_integrity_below": 0.9},
@@ -72,7 +80,7 @@ def test_defaults_fill_optional_sections(tmp_path: Path) -> None:
 
     assert settings.run.budget_usd is None
     assert settings.corpus.units.policy() == UnitPolicy()
-    assert settings.judge == {}
+    assert settings.judge.max_output_tokens == 1024
 
 
 def test_environment_overrides_nested_values_with_yaml_types(tmp_path: Path) -> None:
@@ -192,6 +200,37 @@ def test_scoring_settings_load() -> None:
     ],
 )
 def test_invalid_scoring_settings_fail_at_load(
+    tmp_path: Path, change: dict[str, object], problem: str
+) -> None:
+    with pytest.raises(SettingsError, match=problem):
+        load(tmp_path, MINIMAL | change)
+
+
+def judge(**changes: object) -> dict[str, object]:
+    return {"judge": MINIMAL["judge"] | changes}
+
+
+def test_judge_settings_load_the_rubric(tmp_path: Path) -> None:
+    judge_settings = load(tmp_path).judge
+
+    assert judge_settings.rubric().version == "v1"
+    assert judge_settings.criteria == ("accuracy", "clarity")
+
+
+@pytest.mark.parametrize(
+    ("change", "problem"),
+    [
+        (judge(rubric_version="v404"), "v404.yaml"),
+        (judge(criteria=["accuracy", "charm"]), "criteria not in rubric v1: charm"),
+        (judge(criteria=["clarity", "clarity"]), "criteria must be unique"),
+        (judge(runs_per_criterion=0), "greater than or equal to 1"),
+        (
+            judge(models=[{"name": "j", "provider": "ollama", "model_id": "m"}] * 2),
+            "judge names must be unique",
+        ),
+    ],
+)
+def test_invalid_judge_settings_fail_at_load(
     tmp_path: Path, change: dict[str, object], problem: str
 ) -> None:
     with pytest.raises(SettingsError, match=problem):

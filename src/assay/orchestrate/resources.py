@@ -10,6 +10,7 @@ import dagster as dg
 
 from assay.corpus import CorpusBuilder, GitSnapshotFetcher
 from assay.generate import Budget, DocumentGenerator, Subject
+from assay.judge import DocumentJudge, JudgeModel
 from assay.llm import create_client
 from assay.metrics import Metric, static_metrics
 from assay.settings import Settings, load_settings
@@ -46,6 +47,27 @@ class AssayResource(dg.ConfigurableResource):  # type: ignore[type-arg]
     def static_metrics(self, settings: Settings) -> tuple[Metric, ...]:
         critical = settings.scoring.critical_failures
         return static_metrics(integrity_critical_below=critical.referential_integrity_below)
+
+    def document_judge(self, settings: Settings) -> DocumentJudge:
+        judging = settings.judge
+        judges = [
+            JudgeModel(
+                name=model.name,
+                provider=model.provider,
+                client=create_client(model.provider, model.model_id),
+                temperature=model.temperature,
+            )
+            for model in judging.models
+        ]
+        return DocumentJudge(
+            judges,
+            judging.rubric(),
+            criteria=judging.criteria,
+            runs=judging.runs_per_criterion,
+            seed=settings.run.seed,
+            max_output_tokens=judging.max_output_tokens,
+            budget=Budget(settings.run.budget_usd),
+        )
 
     def document_generator(self, settings: Settings) -> DocumentGenerator:
         generation = settings.generation

@@ -14,6 +14,7 @@ class FakeLLM:
     reply: Callable[[ChatRequest], str] = lambda request: "## doc"
     fail_when: Callable[[ChatRequest], bool] = lambda request: False
     cost_usd: float = 0.0
+    truncated: bool = False
     requests: list[ChatRequest] = field(default_factory=list)
 
     def chat(self, request: ChatRequest) -> ChatResponse:
@@ -29,5 +30,5 @@ class FakeLLM:
             output_tokens=len(text.split()),
             latency_seconds=0.01,
             cost_usd=self.cost_usd,
-            truncated=False,
+            truncated=self.truncated,
         )

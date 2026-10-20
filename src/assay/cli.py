@@ -104,6 +104,34 @@ def measure(
     )
 
 
+@app.command()
+def judge(
+    config: ConfigOption = DEFAULT_CONFIG,
+    repo: RepoOption = None,
+    epoch: EpochOption = None,
+    verbose: VerboseOption = False,
+) -> None:
+    """Grade each repository epoch's documents with every judge model."""
+
+    def summarize(run: PartitionRun) -> str:
+        counts = run.metadata.get("judgments", {})
+        return (
+            f"{counts.get('new', 0)} new, {counts.get('skipped', 0)} existing, "
+            f"{counts.get('failed', 0)} failed, {counts.get('rows', 0)} stored; "
+            f"{counts.get('too_large', 0)} documents too large, "
+            f"{counts.get('contradictions', 0)} top scores despite issues"
+        )
+
+    _run_partitions(
+        config,
+        repo=repo,
+        epoch=epoch,
+        verbose=verbose,
+        materialize=Pipeline.materialize_judgments,
+        summarize=summarize,
+    )
+
+
 def _run_partitions(
     config: Path,
     *,

@@ -31,6 +31,7 @@ from assay.corpus.manifest import Manifest, ManifestError, load_manifest
 from assay.corpus.units import UNIT_KINDS, UnitPolicy
 from assay.extract import SourceLanguage, SymbolKind
 from assay.generate import PromptError, PromptTemplate
+from assay.judge import Rubric, RubricError
 from assay.llm import Provider
 
 ENV_PREFIX = "ASSAY_"
@@ -112,11 +113,11 @@ class CorpusSettings(_Section):
         return manifest
 
 
-class SubjectSettings(_Section):
-    """A model that writes documentation."""
+class ModelSettings(_Section):
+    """A model that writes or grades documentation."""
 
     name: str = Field(min_length=1)
-    """Short label stored with each document, such as `qwen-coder-3b`."""
+    """Short label stored with each row it produces, such as `qwen-coder-3b`."""
     provider: Provider
     model_id: str = Field(min_length=1)
     temperature: float = Field(default=0.0, ge=0, le=2)
@@ -128,14 +129,11 @@ class GenerationSettings(_Section):
     max_output_tokens: int = Field(default=1024, ge=1)
     sample_per_partition: int | None = Field(default=None, ge=1)
     """Units documented per repository epoch; None documents every unit."""
-    subjects: tuple[SubjectSettings, ...] = Field(min_length=1)
+    subjects: tuple[ModelSettings, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
     def _check(self) -> Self:
-        names = [subject.name for subject in self.subjects]
-        if len(set(names)) != len(names):
-            msg = f"subject names must be unique: {', '.join(names)}"
-            raise ValueError(msg)
+        _require_unique_names("subject", self.subjects)
         try:
             self.prompt()
         except PromptError as exc:
@@ -144,6 +142,48 @@ class GenerationSettings(_Section):
 
     def prompt(self) -> PromptTemplate:
         return PromptTemplate.load(self.prompt_dir, self.prompt_version)
+
+
+class VarianceStudySettings(_Section):
+    temperatures: tuple[float, ...] = Field(min_length=1)
+    subset_size: int = Field(ge=1)
+
+
+class JudgeSettings(_Section):
+    rubric_version: str = Field(min_length=1)
+    rubric_dir: ResolvedPath
+    runs_per_criterion: int = Field(ge=1)
+    """Repeated grades per document and criterion, to measure judge variance."""
+    criteria: tuple[str, ...] = Field(min_length=1)
+    max_output_tokens: int = Field(default=1024, ge=1)
+    variance_study: VarianceStudySettings
+    models: tuple[ModelSettings, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        _require_unique_names("judge", self.models)
+        if len(set(self.criteria)) != len(self.criteria):
+            msg = f"criteria must be unique: {', '.join(self.criteria)}"
+            raise ValueError(msg)
+        try:
+            rubric = self.rubric()
+        except RubricError as exc:
+            raise ValueError(str(exc)) from exc
+        unknown = [c for c in self.criteria if c not in rubric.criteria]
+        if unknown:
+            msg = f"criteria not in rubric {rubric.version}: {', '.join(unknown)}"
+            raise ValueError(msg)
+        return self
+
+    def rubric(self) -> Rubric:
+        return Rubric.load(self.rubric_dir, self.rubric_version)
+
+
+def _require_unique_names(role: str, models: tuple[ModelSettings, ...]) -> None:
+    names = [model.name for model in models]
+    if len(set(names)) != len(names):
+        msg = f"{role} names must be unique: {', '.join(names)}"
+        raise ValueError(msg)
 
 
 class CriticalFailureSettings(_Section):
@@ -187,7 +227,7 @@ class Settings(_Section):
     storage: StorageSettings
     corpus: CorpusSettings
     generation: GenerationSettings
-    judge: dict[str, Any] = {}
+    judge: JudgeSettings
     scoring: ScoringSettings
     evaluation: dict[str, Any] = {}
     drift: dict[str, Any] = {}

@@ -12,6 +12,7 @@ import dagster as dg
 
 from assay.corpus import SOURCES, SYMBOLS, UNITS, store_snapshot_corpus
 from assay.generate import DOCUMENTS, sample_units
+from assay.judge import JUDGMENTS
 from assay.metrics import METRICS_TABLE, get_rules, measure
 from assay.orchestrate.partitions import CorpusPartitions
 from assay.orchestrate.resources import AssayResource
@@ -30,6 +31,7 @@ _DESCRIPTIONS = {
     SYMBOLS.name: "Every extracted symbol with its signature, docstring and file.",
     DOCUMENTS.name: "Documentation written by each subject model for the sampled units.",
     METRICS_TABLE.name: "Deterministic metrics per document, each with an explanation.",
+    JUDGMENTS.name: "Rubric grades per document, criterion, judge and run, with the issues found.",
 }
 
 CORPUS_TABLES: tuple[TableSpec[Record], ...] = (SOURCES, UNITS, SYMBOLS)  # type: ignore[assignment]
@@ -236,6 +238,101 @@ def metrics_assets(partitions: CorpusPartitions) -> dg.AssetsDefinition:
         )
 
     return static_metrics
+
+
+def judgments_assets(partitions: CorpusPartitions) -> dg.AssetsDefinition:
+    """
+    Grades of a repository epoch's documents by every judge, on every
+    criterion, in every run.
+
+    New judgments are added to those already stored. Documents whose prompt
+    would not fit a judge's context are left out and counted as too large;
+    failed calls and invalid replies fail the non-blocking `complete` check
+    and are retried on the next run.
+    """
+
+    @dg.multi_asset(
+        name="judging",
+        specs=[
+            dg.AssetSpec(
+                JUDGMENTS.name,
+                group_name=SCORING_GROUP,
+                description=_DESCRIPTIONS[JUDGMENTS.name],
+                deps=[DOCUMENTS.name, UNITS.name],
+            )
+        ],
+        check_specs=[
+            _contract_check_spec(JUDGMENTS),  # type: ignore[arg-type]
+            dg.AssetCheckSpec(
+                COMPLETE_CHECK,
+                asset=JUDGMENTS.name,
+                description="Every document has every grade from every judge.",
+            ),
+        ],
+        partitions_def=partitions.definition,
+    )
+    def judging(context: dg.AssetExecutionContext, assay: AssayResource) -> AssetEvents:
+        repo, epoch = partitions.resolve(context.partition_key)
+        settings = assay.settings()
+        store = assay.store(settings)
+        partition = Partition(repo.name, epoch)
+
+        documents = store.read(DOCUMENTS, repo=repo.name, epoch=epoch)
+        if not documents:
+            msg = f"no documents stored for {context.partition_key}; run generate first"
+            raise dg.Failure(msg)
+        units = {(u.unit_id, u.commit): u for u in store.read(UNITS, repo=repo.name, epoch=epoch)}
+
+        judge = assay.document_judge(settings)
+        language = repo.language.value
+        fitting = [
+            d for d in documents if judge.fits(d, units[(d.unit_id, d.commit)], language=language)
+        ]
+        existing = store.read(JUDGMENTS, repo=repo.name, epoch=epoch)
+        report = judge.judge(
+            fitting, units, language=language, existing={j.judgment_id for j in existing}
+        )
+        store.write(JUDGMENTS, [*existing, *report.judgments], partition)
+        context.log.info(
+            "%s: %d new judgments, %d already stored, %d failed",
+            context.partition_key,
+            len(report.judgments),
+            report.skipped,
+            len(report.failures),
+        )
+
+        scores: dict[str, list[int]] = {}
+        for judgment in [*existing, *report.judgments]:
+            scores.setdefault(judgment.criterion, []).append(judgment.score)
+        yield from _materialize_and_check(
+            store,
+            JUDGMENTS,  # type: ignore[arg-type]
+            partition,
+            metadata={
+                "new": len(report.judgments),
+                "skipped": report.skipped,
+                "failed": len(report.failures),
+                "too_large": len(documents) - len(fitting),
+                "contradictions": sum(j.contradicts_rubric for j in report.judgments),
+                **{f"mean_{name}": round(sum(v) / len(v), 3) for name, v in scores.items()},
+            },
+        )
+        yield dg.AssetCheckResult(
+            asset_key=JUDGMENTS.name,
+            check_name=COMPLETE_CHECK,
+            passed=not report.failures and not report.stopped_by_budget,
+            severity=dg.AssetCheckSeverity.WARN,
+            metadata={
+                "failed": len(report.failures),
+                "stopped_by_budget": report.stopped_by_budget,
+                "failures": "\n".join(
+                    f"{f.judge} {f.document_id[:12]} {f.criterion}#{f.run_index}: {f.error}"
+                    for f in report.failures
+                ),
+            },
+        )
+
+    return judging
 
 
 def _materialize_and_check(
