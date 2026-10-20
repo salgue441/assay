@@ -36,7 +36,7 @@ step() {
 
 if $sync; then
     # --inexact keeps conda-installed packages when syncing into a conda env.
-    sync_args=(sync --locked)
+    sync_args=(sync --locked --extra app)
     [[ -n "${UV_PROJECT_ENVIRONMENT:-}" ]] && sync_args+=(--inexact)
     step "Sync dependencies" uv "${sync_args[@]}"
 fi

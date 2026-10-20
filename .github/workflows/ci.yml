@@ -35,7 +35,7 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
-      - run: uv sync --locked
+      - run: uv sync --locked --extra app
       - run: uv run --no-sync ruff format --check --diff .
       - run: uv run --no-sync ruff check --output-format=github .
       - run: uv run --no-sync mypy
@@ -59,7 +59,7 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
-      - run: uv sync --locked
+      - run: uv sync --locked --extra app
       - run: uv run --no-sync pytest -m "not llm" --cov-report=xml
       - if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

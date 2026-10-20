@@ -186,6 +186,12 @@ def _require_unique_names(role: str, models: tuple[ModelSettings, ...]) -> None:
         raise ValueError(msg)
 
 
+class RatingSettings(_Section):
+    additional_rater_share: float = Field(default=0.2, gt=0, le=1)
+    """The primary rater rates every document; each additional rater rates
+    this share, the same documents for all, so rater agreement can be measured."""
+
+
 class CriticalFailureSettings(_Section):
     referential_integrity_below: float = Field(ge=0, le=1)
     """A document citing a smaller share of resolvable names is rejected."""
@@ -228,6 +234,7 @@ class Settings(_Section):
     corpus: CorpusSettings
     generation: GenerationSettings
     judge: JudgeSettings
+    rating: RatingSettings = RatingSettings()
     scoring: ScoringSettings
     evaluation: dict[str, Any] = {}
     drift: dict[str, Any] = {}
