@@ -17,10 +17,11 @@ from scipy import stats
 
 from assay.calibrate.ablation import AblationStudy, ablate, composite
 from assay.calibrate.agreement import krippendorff_alpha, weighted_kappa_estimate
+from assay.calibrate.baseline import MODELS, feature_matrix, fit_and_predict, out_of_fold
 from assay.calibrate.bootstrap import Estimate
 from assay.calibrate.correlation import RankMethod, rank_correlation
 from assay.calibrate.decisions import DecisionQuality, Routing, choose_routing, routed
-from assay.calibrate.split import grouped_split
+from assay.calibrate.split import Split, grouped_split
 from assay.calibrate.weights import choose_shrinkage, fit_weights
 from assay.judge import MAX_SCORE, MIN_SCORE
 from assay.rating import Decision, Rating
@@ -180,6 +181,10 @@ class CalibrationReport:
     raters' decisions and publish precision."""
     ablations: Mapping[str, AblationStudy]
     """Split -> the scorer under the prior weights with each part removed."""
+    baseline: Mapping[str, Mapping[str, Estimate]]
+    """Split -> predictor -> Spearman rho against human overall over
+    non-rejected documents: the composite, the judge alone and each learned
+    baseline model. Development values of the models are out-of-fold."""
     disagreements: tuple[Disagreement, ...]
     """The largest score-human rank gaps on the development split."""
     notes: tuple[str, ...] = field(default=())
@@ -196,10 +201,12 @@ def calibrate(
     resamples: int,
     seed: int,
     include_test: bool,
+    texts: Mapping[str, str],
 ) -> CalibrationReport:
     """
     Split `documents` by repository, fit weights on the development side
-    and measure agreement with the raters on each reported side. A result
+    and measure agreement with the raters on each reported side. `texts`
+    holds each document's text by id, for the learned baseline. A result
     that cannot be computed, such as a correlation over constant ratings,
     is left out and explained in `notes`. Raises `ValueError` when the
     documents come from fewer than two repositories.
@@ -228,15 +235,6 @@ def calibrate(
         notes.append("thresholds: no development document has an undisputed human decision")
     criteria = sorted({c for d in documents for c in d.criteria})
 
-    def attempt[**P, T](
-        label: str, compute: Callable[P, T], *args: P.args, **kwargs: P.kwargs
-    ) -> T | None:
-        try:
-            return compute(*args, **kwargs)
-        except ValueError as exc:
-            notes.append(f"{label}: {exc}")
-            return None
-
     correlation: dict[str, dict[str, Estimate]] = {}
     fitted_correlation: dict[str, dict[str, Estimate]] = {}
     judge_kappa: dict[str, dict[str, Estimate]] = {}
@@ -253,7 +251,8 @@ def calibrate(
             refit = [(d, c) for d in kept if (c := composite(d, fitted.weights)) is not None]
         correlation[side] = {}
         for method in METHODS:
-            estimate = attempt(
+            estimate = _attempt(
+                notes,
                 f"{side} {method}",
                 _correlate,
                 [d.composite for d in kept],
@@ -265,7 +264,8 @@ def calibrate(
             if estimate is not None:
                 correlation[side][method] = estimate
             if fitted is not None:
-                estimate = attempt(
+                estimate = _attempt(
+                    notes,
                     f"{side} fitted {method}",
                     _correlate,
                     [c for _, c in refit],
@@ -278,12 +278,22 @@ def calibrate(
                     fitted_correlation[side][method] = estimate
         judge_kappa[side] = {}
         for criterion in criteria:
-            estimate = attempt(
-                f"{side} kappa {criterion}", _kappa, docs, criterion, resamples, seed
+            estimate = _attempt(
+                notes, f"{side} kappa {criterion}", _kappa, docs, criterion, resamples, seed
             )
             if estimate is not None:
                 judge_kappa[side][criterion] = estimate
 
+    baseline = _baseline(
+        split,
+        sides,
+        texts=texts,
+        prior=prior,
+        criteria=criteria,
+        resamples=resamples,
+        seed=seed,
+        notes=notes,
+    )
     raters = sorted({r for d in documents for r in d.ratings})
     return CalibrationReport(
         raters=tuple(raters),
@@ -313,6 +323,7 @@ def calibrate(
             side: ablate(docs, weights=prior, judged=criteria, routing=routing)
             for side, docs in sides.items()
         },
+        baseline=baseline,
         disagreements=_disagreements(split.dev),
         notes=tuple(notes),
     )
@@ -474,3 +485,104 @@ def _percentiles(values: Sequence[float]) -> list[float]:
 
 def _round_half_up(value: float) -> int:
     return math.floor(value + 0.5)
+
+
+def _attempt[**P, T](
+    notes: list[str], label: str, compute: Callable[P, T], *args: P.args, **kwargs: P.kwargs
+) -> T | None:
+    """`compute(*args, **kwargs)`, or None with the reason added to `notes`
+    when it raises `ValueError`."""
+
+    try:
+        return compute(*args, **kwargs)
+    except ValueError as exc:
+        notes.append(f"{label}: {exc}")
+        return None
+
+
+def _baseline(
+    split: Split[RatedDocument],
+    sides: Mapping[str, Sequence[RatedDocument]],
+    *,
+    texts: Mapping[str, str],
+    prior: Mapping[str, float],
+    criteria: Sequence[str],
+    resamples: int,
+    seed: int,
+    notes: list[str],
+) -> dict[str, dict[str, Estimate]]:
+    """
+    Rank correlation with human overall of the composite, the judge alone
+    and each learned baseline, over the non-rejected documents of each side.
+    The models train on development; their development predictions are
+    out-of-fold.
+    """
+
+    judge_weights = {name: prior[name] for name in criteria if name in prior}
+    predicted = _model_predictions(
+        split,
+        sides,
+        texts=texts,
+        metrics=sorted(name for name in prior if name not in criteria),
+        seed=seed,
+        notes=notes,
+    )
+
+    results: dict[str, dict[str, Estimate]] = {}
+    for side, docs in sides.items():
+        candidates: dict[str, list[float | None]] = {
+            "composite": [d.composite for d in docs],
+            "judge_alone": [composite(d, judge_weights) for d in docs],
+            **predicted[side],
+        }
+        results[side] = {}
+        for name, scores in candidates.items():
+            pairs = [(s, d) for s, d in zip(scores, docs, strict=True) if s is not None]
+            kept = [(s, d) for s, d in pairs if not d.rejected]
+            estimate = _attempt(
+                notes,
+                f"{side} baseline {name}",
+                _correlate,
+                [s for s, _ in kept],
+                [d for _, d in kept],
+                "spearman",
+                resamples,
+                seed,
+            )
+            if estimate is not None:
+                results[side][name] = estimate
+    return results
+
+
+def _model_predictions(
+    split: Split[RatedDocument],
+    sides: Mapping[str, Sequence[RatedDocument]],
+    *,
+    texts: Mapping[str, str],
+    metrics: Sequence[str],
+    seed: int,
+    notes: list[str],
+) -> dict[str, dict[str, list[float | None]]]:
+    """Each baseline model's predictions per side: out-of-fold on
+    development, and fitted on development for test."""
+
+    predicted: dict[str, dict[str, list[float | None]]] = {side: {} for side in sides}
+    untexted = sum(d.document_id not in texts for docs in sides.values() for d in docs)
+    if untexted:
+        notes.append(f"baseline models: {untexted} documents have no stored text")
+        return predicted
+
+    features, _ = feature_matrix(split.dev, texts, metrics)
+    target = np.array([d.overall for d in split.dev], dtype=np.float64)
+    groups = [d.repo for d in split.dev]
+    test_features = feature_matrix(sides["test"], texts, metrics)[0] if "test" in sides else None
+    for model in MODELS:
+        oof = _attempt(
+            notes, f"dev {model}", out_of_fold, features, target, groups, model=model, seed=seed
+        )
+        if oof is not None:
+            predicted["dev"][model] = [float(p) for p in oof]
+        if test_features is not None:
+            test = fit_and_predict(features, target, groups, test_features, model=model, seed=seed)
+            predicted["test"][model] = [float(p) for p in test]
+    return predicted

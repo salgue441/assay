@@ -48,6 +48,11 @@ def report_text(report: CalibrationReport, *, rho_target: float, kappa_target: f
             lines += _confusion("decisions with chosen thresholds", report.chosen_decisions[side])
         lines += _decision_quality(report, side)
         lines += _ablations(report.ablations[side])
+        lines += _estimates(
+            "predictors vs overall (spearman; models out-of-fold on development)",
+            report.baseline[side],
+            rho,
+        )
 
     if report.fitted is not None:
         lines.append("")

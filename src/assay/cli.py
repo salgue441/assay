@@ -15,6 +15,7 @@ from assay import __version__
 from assay.calibrate import Routing, calibrate, rated_documents
 from assay.calibrate.report import report_json, report_text
 from assay.corpus import ManifestError
+from assay.generate import DOCUMENTS
 from assay.orchestrate.pipeline import DEFAULT_CONFIG, PartitionRun, Pipeline, build_pipeline
 from assay.rating import RATER_ID_PATTERN, RATINGS
 from assay.scoring import SCORES, ScorerConfig
@@ -293,6 +294,8 @@ def calibrate_command(
         )
         raise typer.Exit(1)
 
+    rated = {d.document_id for d in documents}
+    texts = {d.document_id: d.text for d in store.read(DOCUMENTS) if d.document_id in rated}
     try:
         report = calibrate(
             documents,
@@ -306,6 +309,7 @@ def calibrate_command(
             resamples=resamples or evaluation.bootstrap_resamples,
             seed=settings.run.seed,
             include_test=test,
+            texts=texts,
         )
     except ValueError as exc:
         typer.echo(f"error: {exc}", err=True)
