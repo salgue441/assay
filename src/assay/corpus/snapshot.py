@@ -136,7 +136,7 @@ class GitSnapshotFetcher:
                 text=True,
                 encoding="utf-8",
                 timeout=self._timeout_seconds,
-                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+                env={**isolated_git_env(), "GIT_TERMINAL_PROMPT": "0"},
                 check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -147,6 +147,22 @@ class GitSnapshotFetcher:
             msg = f"git {' '.join(args[:2])} failed: {result.stderr.strip()}"
             raise SnapshotError(msg)
         return result.stdout.strip()
+
+
+def isolated_git_env() -> dict[str, str]:
+    """
+    This process's environment without any `GIT_*` variable.
+
+    Inside a git hook or `git rebase --exec`, variables such as GIT_DIR,
+    GIT_WORK_TREE and GIT_INDEX_FILE point at the repository running the
+    hook and override `git -C <dir>`, so a subprocess that inherits them
+    reads and writes the wrong repository. Callers add back only the
+    `GIT_*` settings they mean to set.
+    """
+
+    return {
+        name: value for name, value in os.environ.items() if not name.upper().startswith("GIT_")
+    }
 
 
 def _remove_tree(path: Path) -> None:

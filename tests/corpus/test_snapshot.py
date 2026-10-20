@@ -120,3 +120,45 @@ def test_missing_git_executable_raises_snapshot_error(repo: LocalRepo, tmp_path:
 
     with pytest.raises(SnapshotError, match="could not run"):
         fetcher.fetch(repo.spec(), 0)
+
+
+@pytest.fixture
+def foreign_git_env(make_repo: MakeRepo, monkeypatch: pytest.MonkeyPatch) -> LocalRepo:
+    """
+    Point GIT_DIR and GIT_WORK_TREE at another repository, as git does
+    inside a hook or `git rebase --exec`; returns that repository.
+    """
+
+    other = make_repo("other/hook-runner")
+    other.commit({"keep.txt": "untouched\n"}, "other")
+    monkeypatch.setenv("GIT_DIR", str(other.path / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(other.path))
+    return other
+
+
+def _assert_untouched(other: LocalRepo) -> None:
+    assert other._git("rev-parse", "HEAD") == other.commits[-1]
+    assert other._git("status", "--porcelain", "--untracked-files=all") == ""
+    assert other._git("rev-list", "--count", "--all") == "1"
+
+
+def test_fetch_ignores_git_variables_of_an_enclosing_repository(
+    repo: LocalRepo, foreign_git_env: LocalRepo, tmp_path: Path
+) -> None:
+    checkout = GitSnapshotFetcher(tmp_path / "cache").fetch(repo.spec(), 1)
+
+    assert checkout.snapshot.commit == repo.commits[1]
+    assert (checkout.root / "pkg" / "mod.py").read_text(encoding="utf-8") == "x = 2\n"
+    assert (checkout.root / ".git").is_dir()
+    _assert_untouched(foreign_git_env)
+
+
+def test_local_repo_ignores_git_variables_of_an_enclosing_repository(
+    make_repo: MakeRepo, foreign_git_env: LocalRepo
+) -> None:
+    repo = make_repo("owner/isolated")
+    sha = repo.commit({"a.py": "a = 1\n"}, "only")
+
+    assert repo._git("rev-parse", "HEAD") == sha
+    assert repo._git("log", "--format=%s") == "only"
+    _assert_untouched(foreign_git_env)
