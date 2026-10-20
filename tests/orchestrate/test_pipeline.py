@@ -10,6 +10,7 @@ from assay.orchestrate import (
     BUILD_CORPUS_JOB,
     CONTRACT_CHECK,
     GENERATE_DOCUMENTS_JOB,
+    MEASURE_DOCUMENTS_JOB,
     build_pipeline,
 )
 from assay.storage import ContractError, ParquetStore
@@ -78,7 +79,7 @@ def test_a_stored_partition_that_breaks_its_contract_fails_the_run(
 def test_definitions_load_with_a_job_per_stage(project: Project) -> None:
     defs = build_pipeline(project.config).definitions()
 
-    for name in (BUILD_CORPUS_JOB, GENERATE_DOCUMENTS_JOB):
+    for name in (BUILD_CORPUS_JOB, GENERATE_DOCUMENTS_JOB, MEASURE_DOCUMENTS_JOB):
         job = defs.resolve_job_def(name)
         assert job.partitions_def is not None
         assert job.partitions_def.get_partition_keys() == ["owner__greeter@00", "owner__greeter@01"]
@@ -87,6 +88,7 @@ def test_definitions_load_with_a_job_per_stage(project: Project) -> None:
         "units",
         "symbols",
         "documents",
+        "metrics",
     }
 
 

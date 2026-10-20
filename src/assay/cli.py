@@ -78,6 +78,32 @@ def generate(
     )
 
 
+@app.command()
+def measure(
+    config: ConfigOption = DEFAULT_CONFIG,
+    repo: RepoOption = None,
+    epoch: EpochOption = None,
+    verbose: VerboseOption = False,
+) -> None:
+    """Compute the static metrics for each repository epoch's documents."""
+
+    def summarize(run: PartitionRun) -> str:
+        counts = run.metadata.get("metrics", {})
+        return (
+            f"{counts.get('rows', 0)} metric values for {counts.get('documents', 0)} documents, "
+            f"{counts.get('critical', 0)} critical"
+        )
+
+    _run_partitions(
+        config,
+        repo=repo,
+        epoch=epoch,
+        verbose=verbose,
+        materialize=Pipeline.materialize_metrics,
+        summarize=summarize,
+    )
+
+
 def _run_partitions(
     config: Path,
     *,

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import dagster as dg
 
-from assay.orchestrate.assets import corpus_assets, documents_assets
+from assay.orchestrate.assets import corpus_assets, documents_assets, metrics_assets
 from assay.orchestrate.partitions import CorpusPartitions
 from assay.orchestrate.resources import AssayResource
 from assay.settings import load_settings
@@ -20,6 +20,7 @@ from assay.settings import load_settings
 DEFAULT_CONFIG = Path("config/default.yaml")
 BUILD_CORPUS_JOB = "build_corpus"
 GENERATE_DOCUMENTS_JOB = "generate_documents"
+MEASURE_DOCUMENTS_JOB = "measure_documents"
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,11 +41,16 @@ class Pipeline:
     partitions: CorpusPartitions
     corpus: dg.AssetsDefinition
     documents: dg.AssetsDefinition
+    metrics: dg.AssetsDefinition
     resources: dict[str, AssayResource]
+
+    @property
+    def assets(self) -> list[dg.AssetsDefinition]:
+        return [self.corpus, self.documents, self.metrics]
 
     def definitions(self) -> dg.Definitions:
         return dg.Definitions(
-            assets=[self.corpus, self.documents],
+            assets=self.assets,
             jobs=[
                 dg.define_asset_job(
                     BUILD_CORPUS_JOB,
@@ -55,6 +61,11 @@ class Pipeline:
                     GENERATE_DOCUMENTS_JOB,
                     selection=dg.AssetSelection.assets(self.documents),
                     description="Document a repository epoch's sampled units with each subject.",
+                ),
+                dg.define_asset_job(
+                    MEASURE_DOCUMENTS_JOB,
+                    selection=dg.AssetSelection.assets(self.metrics),
+                    description="Compute the static metrics for a repository epoch's documents.",
                 ),
             ],
             resources=self.resources,
@@ -70,9 +81,14 @@ class Pipeline:
 
         return self._materialize(self.documents, key, log_level)
 
+    def materialize_metrics(self, key: str, *, log_level: str = "INFO") -> PartitionRun:
+        """Compute one partition's static metrics; its documents must already be stored."""
+
+        return self._materialize(self.metrics, key, log_level)
+
     def _materialize(self, asset: dg.AssetsDefinition, key: str, log_level: str) -> PartitionRun:
         result = dg.materialize(
-            [self.corpus, self.documents],
+            self.assets,
             selection=dg.AssetSelection.assets(asset),
             partition_key=key,
             resources=self.resources,
@@ -120,5 +136,6 @@ def build_pipeline(config_path: Path = DEFAULT_CONFIG, *, base_dir: Path | None 
         partitions=partitions,
         corpus=corpus_assets(partitions),
         documents=documents_assets(partitions),
+        metrics=metrics_assets(partitions),
         resources={"assay": resource},
     )

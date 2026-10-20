@@ -11,12 +11,14 @@ from assay.orchestrate.assets import (
     CORPUS_TABLES,
     corpus_assets,
     documents_assets,
+    metrics_assets,
 )
 from assay.orchestrate.partitions import CorpusPartitions, partition_key
 from assay.orchestrate.pipeline import (
     BUILD_CORPUS_JOB,
     DEFAULT_CONFIG,
     GENERATE_DOCUMENTS_JOB,
+    MEASURE_DOCUMENTS_JOB,
     PartitionRun,
     Pipeline,
     build_pipeline,
@@ -30,6 +32,7 @@ __all__ = [
     "CORPUS_TABLES",
     "DEFAULT_CONFIG",
     "GENERATE_DOCUMENTS_JOB",
+    "MEASURE_DOCUMENTS_JOB",
     "AssayResource",
     "CorpusPartitions",
     "PartitionRun",
@@ -37,5 +40,6 @@ __all__ = [
     "build_pipeline",
     "corpus_assets",
     "documents_assets",
+    "metrics_assets",
     "partition_key",
 ]
