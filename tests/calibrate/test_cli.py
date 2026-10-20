@@ -262,3 +262,28 @@ def test_a_changed_golden_set_needs_replace(config: Path, tmp_path: Path) -> Non
 
     assert code == 0, text
     assert len(list((tmp_path / "data" / "golden_set").glob("*.json"))) == 2
+
+
+def drift(config: Path, *args: str) -> tuple[int, str]:
+    result = CliRunner().invoke(app, ["drift-check", "--config", str(config), *args])
+    if result.exception and not isinstance(result.exception, SystemExit):
+        raise result.exception
+    return result.exit_code, result.output
+
+
+def test_drift_needs_epochs_after_the_baseline(config: Path, tmp_path: Path) -> None:
+    code, text = drift(config, "--fail-on-alert")
+
+    assert code == 0, text
+    assert "only the baseline epoch 0 is scored" in text
+    assert "no golden set is active" in text
+
+
+def test_drift_rechecks_the_judge_against_the_golden_set(config: Path, tmp_path: Path) -> None:
+    freeze(config)
+
+    code, text = drift(config, "--fail-on-alert")
+
+    # The fixture stores no judgments, so agreement cannot be computed.
+    assert code == 0, text
+    assert "kappa is undefined for every criterion" in text

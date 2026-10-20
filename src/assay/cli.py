@@ -1,6 +1,7 @@
 """Command-line entry point. Pipeline stages are added here as they are built."""
 
 import importlib.util
+import json
 import re
 import subprocess
 import sys
@@ -15,12 +16,20 @@ import typer
 import assay.rating
 from assay import __version__
 from assay.calibrate import RatedDocument, Routing, calibrate, rated_documents
-from assay.calibrate.golden import freeze_golden, read_active_golden, select_golden, write_golden
+from assay.calibrate.golden import (
+    freeze_golden,
+    golden_kappa,
+    read_active_golden,
+    select_golden,
+    write_golden,
+)
 from assay.calibrate.report import report_json, report_text, variance_json, variance_text
 from assay.calibrate.reveals import Reveal, conflicting, read_reveals, record_reveal
 from assay.calibrate.study import split_documents
 from assay.calibrate.variance import judge_variance
-from assay.corpus import SOURCES, ManifestError
+from assay.corpus import SOURCES, UNITS, ManifestError
+from assay.drift.check import EpochScore, drift_check
+from assay.drift.report import drift_rows, drift_text
 from assay.generate import DOCUMENTS, Document
 from assay.judge import JUDGMENTS
 from assay.orchestrate.assets import scoring_judgments
@@ -379,6 +388,75 @@ def golden_set_command(
         f"{', '.join(sorted({d.repo for d in chosen}))}" + (short if len(chosen) < size else "")
     )
     typer.echo(f"written to {path}")
+
+
+@app.command("drift-check")
+def drift_check_command(
+    config: ConfigOption = DEFAULT_CONFIG,
+    fail_on_alert: Annotated[
+        bool, typer.Option("--fail-on-alert", help="Exit 3 when any alert fires, for CI.")
+    ] = False,
+) -> None:
+    """Compare later epochs with the baseline epoch and re-check the judge on the golden set."""
+
+    try:
+        settings = load_settings(config)
+    except SettingsError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+
+    scorer = _scorer_config(settings)
+    store = ParquetStore(settings.storage.root)
+    epochs = {(s.repo, s.commit): s.epoch for s in store.read(SOURCES)}
+    lines = {(u.unit_id, u.commit): u.end_line - u.start_line + 1 for u in store.read(UNITS)}
+    scores = [
+        EpochScore(
+            document_id=s.document_id,
+            repo=s.repo,
+            epoch=epochs[(s.repo, s.commit)],
+            composite=s.composite,
+            rejected=s.critical,
+            components={c.name: c.value for c in s.components},
+            unit_lines=lines.get((s.unit_id, s.commit)),
+        )
+        for s in store.read(SCORES)
+        if s.scorer_version == scorer.version
+    ]
+    golden = read_active_golden(settings.storage.root / "golden_set")
+    kappa = (
+        golden_kappa(
+            golden,
+            scoring_judgments(store.read(JUDGMENTS), settings),
+            criteria=settings.judge.criteria,
+        )
+        if golden
+        else None
+    )
+    drift = settings.drift
+    check = drift_check(
+        scores,
+        ks_alpha=drift.ks_alpha,
+        psi_floor=drift.psi_floor,
+        ewma_lambda=drift.ewma_lambda,
+        consecutive=drift.consecutive_runs_to_alert,
+        golden_kappa=kappa,
+        judge_kappa_floor=drift.judge_kappa_floor,
+    )
+
+    log = settings.storage.root / "drift" / "drift_runs.jsonl"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    rows = drift_rows(
+        check,
+        run_at=datetime.now(UTC),
+        scorer_version=scorer.version,
+        golden_version=golden.version if golden else None,
+    )
+    with log.open("a", encoding="utf-8") as out:
+        out.writelines(json.dumps(row, sort_keys=True) + "\n" for row in rows)
+    typer.echo(drift_text(check))
+    typer.echo(f"\n{len(rows)} signals appended to {log}")
+    if fail_on_alert and check.alerts:
+        raise typer.Exit(3)
 
 
 @app.command("judge-variance")

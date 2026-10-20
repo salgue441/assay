@@ -286,6 +286,18 @@ class EvaluationSettings(_Section):
         return raters
 
 
+class DriftSettings(_Section):
+    mode: Literal["replay", "live"] = "replay"
+    """replay backfills the manifest epochs; live appends the newest commit each run."""
+    schedule_cron: str = "0 12 * * 1"
+    ks_alpha: float = Field(default=0.01, gt=0, lt=1)
+    psi_floor: float = Field(default=0.2, ge=0)
+    ewma_lambda: float = Field(default=0.2, gt=0, le=1)
+    consecutive_runs_to_alert: int = Field(default=2, ge=1)
+    judge_kappa_floor: float = Field(default=0.55, ge=-1, le=1)
+    triggers_on_change: tuple[str, ...] = ()
+
+
 class Settings(_Section):
     run: RunSettings
     storage: StorageSettings
@@ -296,7 +308,7 @@ class Settings(_Section):
     scoring: ScoringSettings
     evaluation: EvaluationSettings | None = None
     """Needed only to calibrate."""
-    drift: dict[str, Any] = {}
+    drift: DriftSettings = DriftSettings()
 
     @model_validator(mode="after")
     def _check_scoring_judge(self) -> Self:
