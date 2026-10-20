@@ -124,6 +124,13 @@ class ModelSettings(_Section):
     provider: Provider
     model_id: str = Field(min_length=1)
     temperature: float = Field(default=0.0, ge=0, le=2)
+    family: str | None = Field(default=None, min_length=1)
+    """Model family, such as `phi`. A judge grading a subject of its own
+    family is tested for self-preference; without one, the model id."""
+
+    @property
+    def model_family(self) -> str:
+        return self.family or self.model_id
 
 
 class GenerationSettings(_Section):

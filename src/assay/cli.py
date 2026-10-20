@@ -16,6 +16,7 @@ import typer
 import assay.rating
 from assay import __version__
 from assay.calibrate import RatedDocument, Routing, calibrate, rated_documents
+from assay.calibrate.bias import human_grades, judge_bias, judged_documents
 from assay.calibrate.golden import (
     freeze_golden,
     golden_kappa,
@@ -23,7 +24,14 @@ from assay.calibrate.golden import (
     select_golden,
     write_golden,
 )
-from assay.calibrate.report import report_json, report_text, variance_json, variance_text
+from assay.calibrate.report import (
+    bias_json,
+    bias_text,
+    report_json,
+    report_text,
+    variance_json,
+    variance_text,
+)
 from assay.calibrate.reveals import Reveal, conflicting, read_reveals, record_reveal
 from assay.calibrate.study import split_documents
 from assay.calibrate.variance import judge_variance
@@ -32,7 +40,7 @@ from assay.drift.check import EpochScore, drift_check
 from assay.drift.report import drift_rows, drift_text
 from assay.generate import DOCUMENTS, Document
 from assay.judge import JUDGMENTS
-from assay.orchestrate.assets import scoring_judgments
+from assay.orchestrate.assets import judge_judgments, scoring_judgments
 from assay.orchestrate.pipeline import DEFAULT_CONFIG, PartitionRun, Pipeline, build_pipeline
 from assay.rating import RATER_ID_PATTERN, RATINGS
 from assay.scoring import SCORES, ScorerConfig
@@ -490,6 +498,54 @@ def judge_variance_command(
     path.write_text(variance_json(studies), encoding="utf-8")
     target = settings.evaluation.targets.judge_band_stability if settings.evaluation else 0.9
     typer.echo(variance_text(studies, stability_target=target))
+    typer.echo(f"\nreport written to {path}")
+
+
+@app.command("judge-bias")
+def judge_bias_command(
+    config: ConfigOption = DEFAULT_CONFIG,
+    resamples: Annotated[
+        int | None,
+        typer.Option(min=1, help="Bootstrap resamples, instead of evaluation.bootstrap_resamples."),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option(help="Where to write the JSON report. [default: <storage>/reports/]"),
+    ] = None,
+) -> None:
+    """Test every judge for length bias and for preferring its own model family."""
+
+    try:
+        settings = load_settings(config)
+        rubric_hash = settings.judge.rubric().hash
+    except SettingsError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+
+    store = ParquetStore(settings.storage.root)
+    stored = store.read(JUDGMENTS)
+    judgments = [
+        j for model in settings.judge.models for j in judge_judgments(stored, settings, model.name)
+    ]
+    evaluation = settings.evaluation
+    human = human_grades(
+        store.read(RATINGS),
+        raters=evaluation.raters if evaluation else (),
+        rubric_hash=rubric_hash,
+    )
+    study = judge_bias(
+        judged_documents(store.read(DOCUMENTS), judgments, human),
+        judges={m.name: m.model_family for m in settings.judge.models},
+        subjects={m.name: m.model_family for m in settings.generation.subjects},
+        criteria=settings.judge.criteria,
+        resamples=resamples or (evaluation.bootstrap_resamples if evaluation else 10_000),
+        seed=settings.run.seed,
+    )
+    version = settings.judge.rubric_version
+    path = output or settings.storage.root / "reports" / f"judge-bias-{version}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(bias_json(study), encoding="utf-8")
+    typer.echo(bias_text(study))
     typer.echo(f"\nreport written to {path}")
 
 

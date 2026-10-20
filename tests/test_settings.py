@@ -224,6 +224,17 @@ def test_judge_settings_load_the_rubric(tmp_path: Path) -> None:
     assert judge_settings.criteria == ("accuracy", "clarity")
 
 
+def test_a_model_family_defaults_to_the_model_id(tmp_path: Path) -> None:
+    models = [
+        {"name": "grader", "provider": "ollama", "model_id": "phi4-mini"},
+        {"name": "other", "provider": "ollama", "model_id": "gemma3:4b", "family": "gemma"},
+    ]
+
+    judge_settings = load(tmp_path, MINIMAL | judge(models=models)).judge
+
+    assert [m.model_family for m in judge_settings.models] == ["phi4-mini", "gemma"]
+
+
 @pytest.mark.parametrize(
     ("change", "problem"),
     [
