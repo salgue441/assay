@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from assay.corpus import Unit
 from assay.generate import Budget, Document
 from assay.judge.judgments import Judgment, judgment_id
-from assay.judge.rubric import REPLY_SCHEMA, JudgeReply, Rubric
+from assay.judge.rubric import REPLY_SCHEMA, REPLY_SCHEMA_HASH, JudgeReply, Rubric
 from assay.llm import ChatRequest, LLMClient, LLMError, Provider
 
 logger = logging.getLogger(__name__)
@@ -181,6 +181,8 @@ class DocumentJudge:
                                 run_index=run,
                                 seed=self._seed + run,
                                 temperature=judge.temperature,
+                                max_output_tokens=self._max_output_tokens,
+                                reply_schema_hash=REPLY_SCHEMA_HASH,
                             ),
                         )
 
@@ -195,6 +197,9 @@ class DocumentJudge:
         )
         response = task.judge.client.chat(request)
         self._budget.charge(response.cost_usd)
+        if response.truncated:
+            msg = f"reply cut off at the {self._max_output_tokens}-token output limit"
+            raise ValueError(msg)
         reply = JudgeReply.parse(response.text)
         return Judgment(
             judgment_id=task.judgment_id,
@@ -213,6 +218,8 @@ class DocumentJudge:
             run_index=task.run_index,
             seed=task.seed,
             temperature=task.judge.temperature,
+            max_output_tokens=self._max_output_tokens,
+            reply_schema_hash=REPLY_SCHEMA_HASH,
             score=reply.score,
             issues=tuple(reply.issues),
             rationale=reply.rationale,

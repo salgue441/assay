@@ -96,6 +96,14 @@ def test_reply_schema_asks_for_issues_before_the_score() -> None:
     assert REPLY_SCHEMA["properties"]["score"]["maximum"] == 5
 
 
+def test_reply_schema_bounds_the_reply_so_it_fits_the_output_budget() -> None:
+    properties = REPLY_SCHEMA["properties"]
+
+    assert properties["issues"]["maxItems"] == 8
+    assert properties["issues"]["items"]["maxLength"] == 300
+    assert properties["rationale"]["maxLength"] == 800
+
+
 def test_parses_a_valid_reply() -> None:
     reply = JudgeReply.parse('{"issues": ["vague"], "rationale": "fine", "score": 4}')
 

@@ -155,7 +155,7 @@ class JudgeSettings(_Section):
     runs_per_criterion: int = Field(ge=1)
     """Repeated grades per document and criterion, to measure judge variance."""
     criteria: tuple[str, ...] = Field(min_length=1)
-    max_output_tokens: int = Field(default=768, ge=1)
+    max_output_tokens: int = Field(default=1024, ge=1)
     variance_study: VarianceStudySettings
     models: tuple[ModelSettings, ...] = Field(min_length=1)
 

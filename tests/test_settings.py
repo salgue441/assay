@@ -80,7 +80,7 @@ def test_defaults_fill_optional_sections(tmp_path: Path) -> None:
 
     assert settings.run.budget_usd is None
     assert settings.corpus.units.policy() == UnitPolicy()
-    assert settings.judge.max_output_tokens == 768
+    assert settings.judge.max_output_tokens == 1024
 
 
 def test_environment_overrides_nested_values_with_yaml_types(tmp_path: Path) -> None:

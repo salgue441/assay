@@ -175,6 +175,36 @@ class MissingModel:
         raise AssertionError("must not be called")
 
 
+def test_a_reply_cut_off_at_the_output_limit_is_named_as_such() -> None:
+    llm = FakeLLM(reply=lambda r: '{"issues": ["unfinished', truncated=True)
+
+    report = judge(JudgeModel("g", Provider.OLLAMA, llm), runs=1).judge(
+        DOCUMENTS[:1], UNITS_BY_KEY, language="python"
+    )
+
+    assert report.judgments == []
+    assert {f.error for f in report.failures} == {"reply cut off at the 256-token output limit"}
+
+
+def test_the_output_limit_is_part_of_the_judgment_id() -> None:
+    def ids(max_output_tokens: int) -> set[str]:
+        grader = JudgeModel("g", Provider.OLLAMA, FakeLLM(reply=lambda r: reply_json()))
+        engine = DocumentJudge(
+            (grader,),
+            RUBRIC,
+            criteria=("accuracy",),
+            runs=1,
+            seed=1,
+            max_output_tokens=max_output_tokens,
+        )
+        return {
+            j.judgment_id
+            for j in engine.judge(DOCUMENTS, UNITS_BY_KEY, language="python").judgments
+        }
+
+    assert not ids(256) & ids(512)
+
+
 def test_a_judge_that_cannot_be_found_stops_judging() -> None:
     missing = JudgeModel("m", Provider.OLLAMA, MissingModel())
 

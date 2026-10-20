@@ -21,8 +21,9 @@ class Judgment(Record):
     `judgments` row.
 
     `judgment_id` covers everything that determines the grade (document,
-    rubric, criterion, exact judge weights, run, seed and temperature), so
-    repeating a run is skipped and any change adds a new judgment.
+    rubric, reply schema, criterion, exact judge weights, run, seed,
+    temperature and output limit), so repeating a run is skipped and any
+    change adds a new judgment.
     """
 
     judgment_id: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -43,6 +44,8 @@ class Judgment(Record):
     run_index: int = Field(ge=0)
     seed: int
     temperature: float = Field(ge=0)
+    max_output_tokens: int = Field(ge=1)
+    reply_schema_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     score: int = Field(ge=MIN_SCORE, le=MAX_SCORE)
     issues: tuple[str, ...]
     rationale: str
@@ -73,10 +76,13 @@ def judgment_id(
     run_index: int,
     seed: int,
     temperature: float,
+    max_output_tokens: int,
+    reply_schema_hash: str,
 ) -> str:
     parts = (
         document_id,
         rubric_hash,
+        reply_schema_hash,
         criterion,
         provider.value,
         model_id,
@@ -84,5 +90,6 @@ def judgment_id(
         str(run_index),
         str(seed),
         repr(temperature),
+        str(max_output_tokens),
     )
     return hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()

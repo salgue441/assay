@@ -11,15 +11,20 @@ from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
 from string import Template
-from typing import Any
+from typing import Annotated, Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 from assay.corpus import Unit
 
 MIN_SCORE = 1
 MAX_SCORE = 5
+MAX_ISSUES = 8
+MAX_ISSUE_CHARS = 300
+MAX_RATIONALE_CHARS = 800
+"""Reply bounds. Constrained decoding enforces them, so a reply always fits
+the output budget instead of being cut off mid-string."""
 
 
 class RubricError(ValueError):
@@ -123,8 +128,10 @@ class JudgeReply(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    issues: list[str]
-    rationale: str
+    issues: list[Annotated[str, StringConstraints(max_length=MAX_ISSUE_CHARS)]] = Field(
+        max_length=MAX_ISSUES
+    )
+    rationale: str = Field(max_length=MAX_RATIONALE_CHARS)
     score: int = Field(ge=MIN_SCORE, le=MAX_SCORE)
 
     @classmethod
@@ -140,3 +147,6 @@ class JudgeReply(BaseModel):
 
 REPLY_SCHEMA: Mapping[str, Any] = JudgeReply.model_json_schema()
 """The JSON schema judges' replies are constrained to."""
+
+REPLY_SCHEMA_HASH = hashlib.sha256(json.dumps(REPLY_SCHEMA, sort_keys=True).encode()).hexdigest()
+"""Part of every judgment id: a different reply shape can change the grade."""

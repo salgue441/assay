@@ -47,7 +47,7 @@ judge:
   rubric_version: v1 # config/rubrics/<version>.yaml; never edit a used version
   rubric_dir: config/rubrics
   runs_per_criterion: 3 # N repeated judgments to measure variance
-  max_output_tokens: 768 # issues and rationale come before the score
+  max_output_tokens: 1024 # fits the bounded reply: <= 8 issues, then rationale, then score
   variance_study:
     temperatures: [0.0, 0.7]
     subset_size: 50
