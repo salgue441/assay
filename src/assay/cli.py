@@ -118,6 +118,8 @@ def _run_partitions(
 
     Exits 1 if any partition fails and 2 for an invalid config or an empty
     selection. Failed non-blocking checks are shown but do not fail the run.
+    A failure prints its reason on the partition's line; Dagster's own logs
+    appear only with --verbose.
     """
 
     try:
@@ -133,10 +135,10 @@ def _run_partitions(
 
     failed = 0
     for key in keys:
-        run = materialize(pipeline, key, log_level="INFO" if verbose else "WARNING")
+        run = materialize(pipeline, key, log_level="INFO" if verbose else "CRITICAL")
         failed += not run.succeeded
         status = "ok" if run.succeeded else "FAILED"
-        details = summarize(run) if run.succeeded else "see --verbose for the error"
+        details = summarize(run) if run.succeeded else (run.error or "unknown error")
         if run.warnings:
             details += f" (warnings: {', '.join(run.warnings)})"
         typer.echo(f"{status:<6} {key:<40} {details}")

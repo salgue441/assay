@@ -58,7 +58,21 @@ def test_measuring_needs_documents_first(project: Project) -> None:
     pipeline = build_pipeline(project.config)
     assert pipeline.materialize_corpus(PARTITION, log_level="ERROR").succeeded
 
-    assert not pipeline.materialize_metrics(PARTITION, log_level="CRITICAL").succeeded
+    run = pipeline.materialize_metrics(PARTITION, log_level="CRITICAL")
+
+    assert not run.succeeded
+    assert run.error == f"no documents stored for {PARTITION}; run generate first"
+
+
+def test_the_command_prints_why_a_partition_failed_without_dagster_logs(project: Project) -> None:
+    build_pipeline(project.config).materialize_corpus(PARTITION, log_level="ERROR")
+
+    result = CliRunner().invoke(app, ["measure", "--config", str(project.config), "--epoch", "0"])
+
+    assert result.exit_code == 1
+    assert f"FAILED {PARTITION:<40} no documents stored" in result.output
+    assert "Traceback" not in result.output
+    assert "STEP_FAILURE" not in result.output
 
 
 def test_the_measure_command(generated: Project) -> None:

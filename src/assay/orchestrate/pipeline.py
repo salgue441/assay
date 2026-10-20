@@ -34,6 +34,8 @@ class PartitionRun:
     """Non-blocking checks that failed, as `asset.check`."""
     metadata: dict[str, dict[str, int]]
     """Numeric metadata per materialized asset, such as stored `rows`."""
+    error: str | None = None
+    """Why the run failed, in one line, when it did."""
 
 
 @dataclass(frozen=True)
@@ -109,15 +111,45 @@ class Pipeline:
             }
             for materialization in result.asset_materializations_for_node(asset.node_def.name)
         }
+        failed_checks = [
+            f"{check.asset_key.to_user_string()}.{check.check_name} check failed"
+            for check in checks
+            if not check.passed and check.severity == dg.AssetCheckSeverity.ERROR
+        ]
+        errors = [*_step_errors(result), *failed_checks]
         return PartitionRun(
             key=key,
-            succeeded=result.success
-            and all(
-                check.passed for check in checks if check.severity == dg.AssetCheckSeverity.ERROR
-            ),
+            succeeded=result.success and not failed_checks,
             warnings=warnings,
             metadata=metadata,
+            error="; ".join(errors) or None,
         )
+
+
+_REPORTED_AS_CHECKS = "DagsterAssetCheckFailedError"
+
+
+def _step_errors(result: dg.ExecuteInProcessResult) -> list[str]:
+    """
+    One line per failed step: a `dg.Failure`'s own description, otherwise the
+    first line of the exception as `Type: message`. Failures caused by
+    blocking checks are skipped; the failed checks are reported instead.
+    """
+
+    messages = []
+    for event in result.get_step_failure_events():
+        failure = event.step_failure_data
+        if failure.user_failure_data is not None and failure.user_failure_data.description:
+            messages.append(failure.user_failure_data.description)
+        elif failure.error is not None and failure.error.cls_name != _REPORTED_AS_CHECKS:
+            error = failure.error
+            # Dagster wraps the user's exception; the original is the cause.
+            while error.cause is not None and (error.cls_name or "").startswith("Dagster"):
+                error = error.cause
+            first_line = error.message.strip().splitlines()[0]
+            qualified_type, _, text = first_line.partition(": ")
+            messages.append(f"{qualified_type.rsplit('.', 1)[-1]}: {text}")
+    return messages
 
 
 def build_pipeline(config_path: Path = DEFAULT_CONFIG, *, base_dir: Path | None = None) -> Pipeline:

@@ -74,6 +74,9 @@ def test_a_stored_partition_that_breaks_its_contract_fails_the_run(
 
     assert not run.succeeded
     assert all("rows" not in counts for counts in run.metadata.values())
+    assert run.error == "; ".join(
+        f"{table}.contract check failed" for table in ("sources", "units", "symbols")
+    )
 
 
 def test_definitions_load_with_a_job_per_stage(project: Project) -> None:
@@ -105,3 +108,20 @@ def test_the_dagster_entry_point_loads_the_committed_config(
         "pallets__click@00"
         in module.defs.resolve_job_def(BUILD_CORPUS_JOB).partitions_def.get_partition_keys()
     )
+
+
+def test_an_unexpected_error_is_reported_as_type_and_message(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken_write(*_: object, **__: object) -> None:
+        msg = "disk full. Free 2.5 GB and retry"
+        raise OSError(msg)
+
+    monkeypatch.setattr(ParquetStore, "write", broken_write)
+
+    run = build_pipeline(project.config).materialize_corpus(
+        "owner__greeter@00", log_level="CRITICAL"
+    )
+
+    assert not run.succeeded
+    assert run.error == "OSError: disk full. Free 2.5 GB and retry"
