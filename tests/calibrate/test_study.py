@@ -3,7 +3,13 @@ from datetime import UTC, datetime
 
 import pytest
 
-from assay.calibrate import CalibrationReport, RatedDocument, calibrate, rated_documents
+from assay.calibrate import (
+    CalibrationReport,
+    RatedDocument,
+    Routing,
+    calibrate,
+    rated_documents,
+)
 from assay.rating import CriterionScore, Decision, Rating, rating_id
 from assay.scoring import Component, RoutingDecision, Score
 
@@ -11,6 +17,7 @@ COMMIT = "c" * 40
 SCORER = "a" * 16
 RUBRIC = "b" * 64
 PRIOR = {"readability": 0.5, "accuracy": 0.5}
+ROUTING = Routing(publish_at_or_above=70, escalate_below=40)
 
 
 def doc_id(name: str) -> str:
@@ -163,6 +170,7 @@ def run(documents: list[RatedDocument], *, include_test: bool = False) -> Calibr
     return calibrate(
         documents,
         prior=PRIOR,
+        routing=ROUTING,
         development_fraction=0.5,
         shrink_to_prior=True,
         resamples=50,
@@ -185,7 +193,8 @@ def test_a_score_that_orders_documents_like_the_raters_correlates_perfectly() ->
 def test_the_test_split_is_reported_only_on_request() -> None:
     report = run(corpus())
 
-    assert set(report.correlation) == set(report.judge_kappa) == set(report.decisions) == {"dev"}
+    assert set(report.correlation) == set(report.judge_kappa) == {"dev"}
+    assert set(report.decisions) == set(report.ablations) == {"dev"}
 
 
 def test_rejected_documents_are_left_out_of_correlations_but_counted_as_decisions() -> None:

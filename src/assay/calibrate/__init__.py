@@ -4,6 +4,7 @@ do? Pure, deterministic functions with no I/O; `study` combines the
 statistics over stored scores and ratings.
 """
 
+from assay.calibrate.ablation import Ablation, AblationStudy, Outcome, Routing, ablate
 from assay.calibrate.agreement import (
     AlphaLevel,
     KappaWeights,
@@ -25,15 +26,20 @@ from assay.calibrate.study import (
 from assay.calibrate.weights import choose_shrinkage, fit_weights, grouped_folds
 
 __all__ = [
+    "Ablation",
+    "AblationStudy",
     "AlphaLevel",
     "CalibrationReport",
     "Disagreement",
     "Estimate",
     "FittedWeights",
     "KappaWeights",
+    "Outcome",
     "RankMethod",
     "RatedDocument",
+    "Routing",
     "Split",
+    "ablate",
     "bootstrap_interval",
     "calibrate",
     "choose_shrinkage",

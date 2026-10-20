@@ -8,6 +8,7 @@ import dataclasses
 import json
 from collections.abc import Mapping
 
+from assay.calibrate.ablation import AblationStudy
 from assay.calibrate.bootstrap import Estimate
 from assay.calibrate.study import CalibrationReport
 
@@ -46,6 +47,7 @@ def report_text(report: CalibrationReport, *, rho_target: float, kappa_target: f
         for scorer, humans in report.decisions[side].items():
             counts = ", ".join(f"{human} {count}" for human, count in humans.items())
             lines.append(f"    {scorer:<9} {counts}")
+        lines += _ablations(report.ablations[side])
 
     if report.fitted is not None:
         lines.append("")
@@ -81,6 +83,29 @@ def _estimates(title: str, estimates: Mapping[str, Estimate], target: float | No
             line += f"  {'meets' if e.value >= target else 'below'} target {target:g}"
         lines.append(line)
     return lines
+
+
+def _ablations(study: AblationStudy) -> list[str]:
+    full = study.full
+    labels = ["full scorer", *(f"without {a.removed}" for a in study.ablations)]
+    width = max(map(len, labels))
+    lines = [
+        "  ablation (prior weights; change from the full scorer)",
+        f"    {labels[0]:<{width}}  rho {_number(full.spearman)}  "
+        f"decisions {_number(full.decision_agreement)}  n={full.documents}",
+    ]
+    lines += [
+        f"    {label:<{width}}  rho {_number(a.delta_spearman, signed=True)}  "
+        f"decisions {_number(a.delta_decision_agreement, signed=True)}  n={a.outcome.documents}"
+        for label, a in zip(labels[1:], study.ablations, strict=True)
+    ]
+    return lines
+
+
+def _number(value: float | None, *, signed: bool = False) -> str:
+    if value is None:
+        return "   n/a"
+    return f"{value:+6.3f}" if signed else f"{value:6.3f}"
 
 
 def _repos(repos: tuple[str, ...]) -> str:

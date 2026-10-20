@@ -77,6 +77,7 @@ def test_calibrates_against_the_configured_human_raters(config: Path, tmp_path: 
     assert code == 0, text
     assert "12 rated documents from raters r1" in text
     assert "held out" in text
+    assert "without judge" in text
     report = json.loads(output.read_text(encoding="utf-8"))
     assert report["raters"] == ["r1"]
     assert set(report["correlation"]) == {"dev"}

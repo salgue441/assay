@@ -12,7 +12,7 @@ import typer
 
 import assay.rating
 from assay import __version__
-from assay.calibrate import calibrate, rated_documents
+from assay.calibrate import Routing, calibrate, rated_documents
 from assay.calibrate.report import report_json, report_text
 from assay.corpus import ManifestError
 from assay.orchestrate.pipeline import DEFAULT_CONFIG, PartitionRun, Pipeline, build_pipeline
@@ -297,6 +297,10 @@ def calibrate_command(
         report = calibrate(
             documents,
             prior=scoring.weights,
+            routing=Routing(
+                publish_at_or_above=scoring.routing.publish_at_or_above,
+                escalate_below=scoring.routing.escalate_below,
+            ),
             development_fraction=evaluation.split.development_fraction,
             shrink_to_prior=evaluation.weight_fit.shrink_to_prior,
             resamples=resamples or evaluation.bootstrap_resamples,
