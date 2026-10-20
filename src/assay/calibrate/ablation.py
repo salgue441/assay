@@ -94,16 +94,22 @@ def ablate(
 
 
 def composite(document: RatedDocument, weights: Mapping[str, float]) -> float | None:
+    """The document's composite under `weights`; see `composite_of`."""
+
+    return composite_of(document.components, weights)
+
+
+def composite_of(values: Mapping[str, float], weights: Mapping[str, float]) -> float | None:
     """
-    The 0-100 composite under `weights`, renormalised over the components
-    the document has; None when it has none of them.
+    The 0-100 composite of component `values` under `weights`, renormalised
+    over the components present, as the scorer does; None when none is.
     """
 
-    present = {n: w for n, w in weights.items() if w > 0 and n in document.components}
+    present = {n: w for n, w in weights.items() if w > 0 and n in values}
     total = sum(present.values())
     if total == 0:
         return None
-    return 100 * sum(document.components[n] * w for n, w in present.items()) / total
+    return 100 * sum(values[n] * w for n, w in present.items()) / total
 
 
 def _outcome(

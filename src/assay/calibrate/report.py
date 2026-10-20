@@ -6,11 +6,12 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from assay.calibrate.ablation import AblationStudy
 from assay.calibrate.bootstrap import Estimate
 from assay.calibrate.study import CalibrationReport
+from assay.calibrate.variance import VarianceStudy
 
 _SIDES = {"dev": "development", "test": "test"}
 
@@ -140,3 +141,34 @@ def _confusion(title: str, table: Mapping[str, Mapping[str, int]]) -> list[str]:
         counts = ", ".join(f"{human} {count}" for human, count in humans.items())
         lines.append(f"    {scorer:<9} {counts}")
     return lines
+
+
+def variance_json(studies: Sequence[VarianceStudy]) -> str:
+    return json.dumps([dataclasses.asdict(s) for s in studies], indent=2, sort_keys=True) + "\n"
+
+
+def variance_text(studies: Sequence[VarianceStudy], *, stability_target: float) -> str:
+    lines: list[str] = []
+    for study in studies:
+        if lines:
+            lines.append("")
+        lines.append(f"Temperature {study.temperature:g}, up to {study.runs} runs per criterion")
+        lines.append("  grade spread per document (1-5 scale)")
+        lines += [
+            f"    {s.criterion:<14} mean sd {s.mean_sd:5.2f}  max sd {s.max_sd:5.2f}  "
+            f"changed in {s.changed:6.1%} of {s.documents}"
+            for s in study.criteria
+        ]
+        if study.band_stability is None:
+            lines.append("  routing stability: no document has two complete runs")
+            continue
+        verdict = "meets" if study.band_stability >= stability_target else "below"
+        lines.append(
+            f"  routing stability: {study.band_stability:.1%} of {study.documents} documents "
+            f"keep their decision in every run ({verdict} target {stability_target:.0%})"
+        )
+        lines += [
+            f"    {' -> '.join(d.value for d in u.decisions):<32} {u.unit_id}"
+            for u in study.unstable
+        ]
+    return "\n".join(lines) if lines else "no repeated judgments found"
