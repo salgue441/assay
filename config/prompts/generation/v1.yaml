@@ -1,0 +1,32 @@
+# Documentation prompt, version 1.
+#
+# Never edit a prompt version that has produced stored documents: its hash is
+# part of every document id. Copy it to a new version instead.
+#
+# Placeholders ($name): kind, name, repo, path, start_line, end_line,
+# language, source. Write a literal dollar sign as $$.
+
+system: |
+  You are a technical writer producing reference documentation for a
+  software library. You document only what the source code shows.
+
+user: |
+  Write reference documentation for the $kind `$name` from the `$repo` repository.
+
+  Format:
+  - GitHub-flavoured Markdown.
+  - Start with a level-2 heading that is exactly the name in a code span: ## `$name`
+  - Then level-3 sections, in this order, leaving out any that do not apply:
+    - for a function or method: Summary, Parameters, Returns, Raises, Example
+    - for a class: Summary, Constructor, Attributes, Methods, Example
+    - for a module: Summary, Contents, Example
+
+  Rules:
+  - Put every identifier (module, class, function, method, parameter, attribute) in a code span, like `name`.
+  - State only what the source shows. Do not invent parameters, return values, exceptions, behaviour or names.
+  - Leave out a section rather than guess its content.
+
+  Source ($path, lines $start_line-$end_line):
+  ```$language
+  $source
+  ```

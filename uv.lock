@@ -336,6 +336,7 @@ dependencies = [
     { name = "duckdb" },
     { name = "krippendorff" },
     { name = "numpy" },
+    { name = "ollama" },
     { name = "pandas" },
     { name = "pandera" },
     { name = "pyarrow" },
@@ -360,7 +361,6 @@ all = [
     { name = "dvc", extra = ["s3"] },
     { name = "matplotlib" },
     { name = "mlflow" },
-    { name = "ollama" },
     { name = "openai" },
     { name = "plotly" },
     { name = "streamlit" },
@@ -375,9 +375,6 @@ bedrock = [
 ]
 data = [
     { name = "dvc", extra = ["s3"] },
-]
-local = [
-    { name = "ollama" },
 ]
 openai = [
     { name = "openai" },
@@ -401,7 +398,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "assay", extras = ["bedrock", "openai", "local", "app", "track", "data"], marker = "extra == 'all'" },
+    { name = "assay", extras = ["bedrock", "openai", "app", "track", "data"], marker = "extra == 'all'" },
     { name = "boto3", marker = "extra == 'bedrock'", specifier = ">=1.34" },
     { name = "dagster", specifier = ">=1.8" },
     { name = "dagster-dbt", specifier = ">=0.24" },
@@ -412,7 +409,7 @@ requires-dist = [
     { name = "matplotlib", marker = "extra == 'app'", specifier = ">=3.9" },
     { name = "mlflow", marker = "extra == 'track'", specifier = ">=2.14" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "ollama", marker = "extra == 'local'", specifier = ">=0.3" },
+    { name = "ollama", specifier = ">=0.6" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.40" },
     { name = "pandas", specifier = ">=2.2" },
     { name = "pandera", specifier = ">=0.20" },
@@ -433,7 +430,7 @@ requires-dist = [
     { name = "tree-sitter-typescript", specifier = ">=0.23" },
     { name = "typer", specifier = ">=0.12" },
 ]
-provides-extras = ["bedrock", "openai", "local", "app", "track", "data", "all"]
+provides-extras = ["bedrock", "openai", "app", "track", "data", "all"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -20,7 +20,7 @@ def test_builds_every_partition(project: Project) -> None:
     assert code == 0, output
     assert "ok     owner__greeter@00" in output
     assert "ok     owner__greeter@01" in output
-    assert "2/2 partitions built" in output
+    assert "2/2 partitions done" in output
     assert len(ParquetStore(project.data).read(SOURCES)) == 2
 
 
@@ -31,7 +31,7 @@ def test_filters_by_repository_and_epoch(project: Project) -> None:
 
     assert code == 0, output
     assert "1 sources, 3 symbols, 3 units" in output
-    assert "1/1 partitions built" in output
+    assert "1/1 partitions done" in output
 
 
 def test_reports_when_nothing_matches(project: Project) -> None:

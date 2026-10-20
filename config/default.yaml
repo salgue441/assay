@@ -6,8 +6,9 @@
 # environment variable, for example ASSAY_STORAGE__ROOT=/tmp/assay or
 # ASSAY_CORPUS__UNITS__MIN_LINES=5; values are parsed as YAML.
 #
-# Model identifiers are placeholders: set them to the exact, versioned ids you
-# use and keep them pinned for the whole study.
+# Model ids are pinned for the whole study; each document also records the
+# model's exact revision (for Ollama, the digest), so re-pulled weights are
+# detected rather than silently mixed in.
 
 run:
   seed: 20261019
@@ -28,11 +29,18 @@ corpus:
     include_private: false
 
 generation:
-  prompt_version: v1
-  subject_models:
-    - name: subject-a
-      provider: bedrock # bedrock | openai | ollama
-      model_id: REPLACE_ME
+  prompt_version: v1 # config/prompts/generation/<version>.yaml; never edit a used version
+  prompt_dir: config/prompts/generation
+  max_output_tokens: 1024
+  sample_per_partition: 8 # pilot: 8 units x 2 subjects per repository epoch; null = every unit
+  subjects: # models that write documentation; provider: ollama | bedrock | openai
+    - name: qwen-coder-3b
+      provider: ollama
+      model_id: qwen2.5-coder:3b
+      temperature: 0.0
+    - name: phi4-mini
+      provider: ollama
+      model_id: phi4-mini
       temperature: 0.0
 
 judge:
@@ -42,16 +50,15 @@ judge:
     temperatures: [0.0, 0.7]
     subset_size: 50
   criteria: [accuracy, clarity, consistency]
-  models:
-    - name: judge-a
-      provider: bedrock
-      model_id: REPLACE_ME
+  models: # gemma3 is from neither subject's family; phi4-mini judging its own output is the self-preference check
+    - name: gemma3-4b
+      provider: ollama
+      model_id: gemma3:4b
       temperature: 0.0
-    # Cross-family judge for the self-preference check:
-    # - name: judge-b
-    #   provider: openai
-    #   model_id: REPLACE_ME
-    #   temperature: 0.0
+    - name: phi4-mini
+      provider: ollama
+      model_id: phi4-mini
+      temperature: 0.0
 
 scoring:
   # Prior weights (sum to 1); fitted weights are learned on the development split only.

@@ -12,66 +12,96 @@ from pathlib import Path
 
 import dagster as dg
 
-from assay.orchestrate.assets import corpus_assets
+from assay.orchestrate.assets import corpus_assets, documents_assets
 from assay.orchestrate.partitions import CorpusPartitions
 from assay.orchestrate.resources import AssayResource
 from assay.settings import load_settings
 
 DEFAULT_CONFIG = Path("config/default.yaml")
 BUILD_CORPUS_JOB = "build_corpus"
+GENERATE_DOCUMENTS_JOB = "generate_documents"
+
+
+@dataclass(frozen=True, slots=True)
+class PartitionRun:
+    """The outcome of materializing one asset for one partition."""
+
+    key: str
+    succeeded: bool
+    """The run finished and every blocking (error-severity) check passed."""
+    warnings: tuple[str, ...]
+    """Non-blocking checks that failed, as `asset.check`."""
+    metadata: dict[str, dict[str, int]]
+    """Numeric metadata per materialized asset, such as stored `rows`."""
 
 
 @dataclass(frozen=True)
 class Pipeline:
     partitions: CorpusPartitions
     corpus: dg.AssetsDefinition
+    documents: dg.AssetsDefinition
     resources: dict[str, AssayResource]
 
     def definitions(self) -> dg.Definitions:
         return dg.Definitions(
-            assets=[self.corpus],
+            assets=[self.corpus, self.documents],
             jobs=[
                 dg.define_asset_job(
                     BUILD_CORPUS_JOB,
                     selection=dg.AssetSelection.assets(self.corpus),
                     description="Fetch, extract and store the corpus tables of a repository epoch.",
-                )
+                ),
+                dg.define_asset_job(
+                    GENERATE_DOCUMENTS_JOB,
+                    selection=dg.AssetSelection.assets(self.documents),
+                    description="Document a repository epoch's sampled units with each subject.",
+                ),
             ],
             resources=self.resources,
         )
 
-    def materialize_corpus(self, key: str, *, log_level: str = "INFO") -> CorpusRun:
-        """Build and store one partition in process, without a Dagster instance."""
+    def materialize_corpus(self, key: str, *, log_level: str = "INFO") -> PartitionRun:
+        """Build and store one corpus partition in process, without a Dagster instance."""
 
+        return self._materialize(self.corpus, key, log_level)
+
+    def materialize_documents(self, key: str, *, log_level: str = "INFO") -> PartitionRun:
+        """Generate one partition's documents; its corpus must already be stored."""
+
+        return self._materialize(self.documents, key, log_level)
+
+    def _materialize(self, asset: dg.AssetsDefinition, key: str, log_level: str) -> PartitionRun:
         result = dg.materialize(
-            [self.corpus],
+            [self.corpus, self.documents],
+            selection=dg.AssetSelection.assets(asset),
             partition_key=key,
             resources=self.resources,
             raise_on_error=False,
             run_config={"loggers": {"console": {"config": {"log_level": log_level}}}},
         )
-        rows = {
-            materialization.asset_key.to_user_string(): int(materialization.metadata["rows"].value)  # type: ignore[arg-type]
-            for materialization in result.asset_materializations_for_node(self.corpus.node_def.name)
-            if "rows" in materialization.metadata
+        checks = result.get_asset_check_evaluations()
+        warnings = tuple(
+            f"{check.asset_key.to_user_string()}.{check.check_name}"
+            for check in checks
+            if not check.passed and check.severity == dg.AssetCheckSeverity.WARN
+        )
+        metadata = {
+            materialization.asset_key.to_user_string(): {
+                name: int(value.value)  # type: ignore[arg-type]
+                for name, value in materialization.metadata.items()
+                if isinstance(value, dg.IntMetadataValue)
+            }
+            for materialization in result.asset_materializations_for_node(asset.node_def.name)
         }
-        return CorpusRun(
+        return PartitionRun(
             key=key,
             succeeded=result.success
-            and all(check.passed for check in result.get_asset_check_evaluations()),
-            rows=rows,
+            and all(
+                check.passed for check in checks if check.severity == dg.AssetCheckSeverity.ERROR
+            ),
+            warnings=warnings,
+            metadata=metadata,
         )
-
-
-@dataclass(frozen=True, slots=True)
-class CorpusRun:
-    """The outcome of building one corpus partition."""
-
-    key: str
-    succeeded: bool
-    """The run finished and every contract check passed."""
-    rows: dict[str, int]
-    """Stored rows per table that passed its contract check."""
 
 
 def build_pipeline(config_path: Path = DEFAULT_CONFIG, *, base_dir: Path | None = None) -> Pipeline:
@@ -87,5 +117,8 @@ def build_pipeline(config_path: Path = DEFAULT_CONFIG, *, base_dir: Path | None 
         config_path=str(config_path), base_dir=None if base_dir is None else str(base_dir)
     )
     return Pipeline(
-        partitions=partitions, corpus=corpus_assets(partitions), resources={"assay": resource}
+        partitions=partitions,
+        corpus=corpus_assets(partitions),
+        documents=documents_assets(partitions),
+        resources={"assay": resource},
     )

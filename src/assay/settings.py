@@ -30,6 +30,8 @@ from assay.corpus.discovery import DEFAULT_EXCLUDED_DIRS, DEFAULT_MAX_FILE_BYTES
 from assay.corpus.manifest import Manifest, ManifestError, load_manifest
 from assay.corpus.units import UNIT_KINDS, UnitPolicy
 from assay.extract import SourceLanguage, SymbolKind
+from assay.generate import PromptError, PromptTemplate
+from assay.llm import Provider
 
 ENV_PREFIX = "ASSAY_"
 _NESTING = "__"
@@ -109,11 +111,45 @@ class CorpusSettings(_Section):
         return manifest
 
 
+class SubjectSettings(_Section):
+    """A model that writes documentation."""
+
+    name: str = Field(min_length=1)
+    """Short label stored with each document, such as `qwen-coder-3b`."""
+    provider: Provider
+    model_id: str = Field(min_length=1)
+    temperature: float = Field(default=0.0, ge=0, le=2)
+
+
+class GenerationSettings(_Section):
+    prompt_version: str = Field(min_length=1)
+    prompt_dir: ResolvedPath
+    max_output_tokens: int = Field(default=1024, ge=1)
+    sample_per_partition: int | None = Field(default=None, ge=1)
+    """Units documented per repository epoch; None documents every unit."""
+    subjects: tuple[SubjectSettings, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        names = [subject.name for subject in self.subjects]
+        if len(set(names)) != len(names):
+            msg = f"subject names must be unique: {', '.join(names)}"
+            raise ValueError(msg)
+        try:
+            self.prompt()
+        except PromptError as exc:
+            raise ValueError(str(exc)) from exc
+        return self
+
+    def prompt(self) -> PromptTemplate:
+        return PromptTemplate.load(self.prompt_dir, self.prompt_version)
+
+
 class Settings(_Section):
     run: RunSettings
     storage: StorageSettings
     corpus: CorpusSettings
-    generation: dict[str, Any] = {}
+    generation: GenerationSettings
     judge: dict[str, Any] = {}
     scoring: dict[str, Any] = {}
     evaluation: dict[str, Any] = {}
