@@ -183,13 +183,15 @@ _TYPESCRIPT_TEMPLATES = (
     "abstract class _ {{ {}; }}",
 )
 _TYPESCRIPT_RECEIVER = "this"
+_TYPESCRIPT_NO_VALUE = "void"
 
 
 class TypeScriptRules:
     """
     Parameters and return types read from the signatures the TypeScript
     extractor produces; destructured parameters have no name and are left
-    out, as is the `this` parameter.
+    out, as is the `this` parameter. A `void` return declares that nothing
+    is returned, so it reads as no return type, like a missing annotation.
     """
 
     @property
@@ -230,7 +232,8 @@ class TypeScriptRules:
         annotation = callable_node.child_by_field_name("return_type")
         if annotation is None:
             return None
-        return _text(annotation, data).removeprefix(":").strip()
+        declared = _text(annotation, data).removeprefix(":").strip()
+        return None if declared == _TYPESCRIPT_NO_VALUE else declared
 
 
 def _typescript_parameter_name(parameter: Node, data: bytes) -> str | None:
