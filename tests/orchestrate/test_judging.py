@@ -2,19 +2,25 @@ import json
 from collections.abc import Callable
 
 import pytest
+import yaml
 from typer.testing import CliRunner
 
 from assay.cli import app
 from assay.judge import JUDGMENTS
 from assay.llm import ChatRequest
 from assay.orchestrate import build_pipeline
+from assay.orchestrate.assets import variance_subset
 from assay.storage import ParquetStore
 
 from ..fake_llm import FakeLLM
+from ..scoring.fixtures import document
 from .project import Project
 
 PARTITION = "owner__greeter@00"
 DOCUMENTS, CRITERIA, RUNS = 3, 2, 2  # see the project's config
+
+
+GRADE_ONE = json.dumps({"issues": ["wrong"], "rationale": "level 1", "score": 1})
 
 
 def answer(request: ChatRequest) -> str:
@@ -109,3 +115,45 @@ def test_the_judge_command(generated: Project) -> None:
 
     assert result.exit_code == 0, result.output
     assert "12 new, 0 existing, 0 failed, 12 stored; 0 documents too large" in result.output
+
+
+def study_variance(project: Project, *, temperatures: list[float], subset: int) -> None:
+    config = yaml.safe_load(project.config.read_text(encoding="utf-8"))
+    config["judge"]["variance_study"] = {"temperatures": temperatures, "subset_size": subset}
+    project.config.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+
+def test_the_variance_study_grades_a_subset_again_at_its_temperatures(
+    generated: Project, use_llm: Callable[..., None]
+) -> None:
+    use_llm(lambda r: answer(r) if r.temperature == 0.0 or r.json_schema is None else GRADE_ONE)
+    study_variance(generated, temperatures=[0.0, 0.7], subset=2)
+    pipeline = build_pipeline(generated.config)
+
+    counts = pipeline.materialize_judgments(PARTITION, log_level="ERROR").metadata["judgments"]
+
+    main, repeated = DOCUMENTS * CRITERIA * RUNS, 2 * CRITERIA * RUNS
+    assert (counts["new"], counts["variance_new"], counts["rows"]) == (
+        main,
+        repeated,
+        main + repeated,
+    )
+    stored = ParquetStore(generated.data).read(JUDGMENTS)
+    warm = [j for j in stored if j.temperature == 0.7]
+    assert len({j.document_id for j in warm}) == 2
+    assert {j.score for j in warm} == {1}
+
+    again = pipeline.materialize_judgments(PARTITION, log_level="ERROR").metadata["judgments"]
+
+    assert (again["new"], again["variance_new"]) == (0, 0)
+
+
+def test_the_variance_subset_is_stable_and_sized() -> None:
+    documents = [document(name) for name in "abcdefgh"]
+
+    subset = variance_subset(documents, size=3, seed=7)
+
+    assert len(subset) == 3
+    assert subset == variance_subset(list(reversed(documents)), size=3, seed=7)
+    assert subset != variance_subset(documents, size=3, seed=8)
+    assert variance_subset(documents, size=20, seed=7) == {d.document_id for d in documents}
