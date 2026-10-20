@@ -277,6 +277,7 @@ def test_evaluation_settings_load_with_defaults(tmp_path: Path) -> None:
     assert settings.split.group_by == "repo"
     assert settings.weight_fit.shrink_to_prior
     assert settings.bootstrap_resamples == 10_000
+    assert (settings.golden_set.source_split, settings.golden_set.size) == ("development", 100)
 
 
 @pytest.mark.parametrize(

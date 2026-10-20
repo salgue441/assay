@@ -228,27 +228,8 @@ def calibrate(
         raise ValueError(msg)
 
     notes: list[str] = []
-    unstratified = [
-        d.document_id[:12] for d in documents if any(v not in d.strata for v in stratify_by)
-    ]
-    if unstratified:
-        msg = f"documents without {', '.join(stratify_by)}: {', '.join(unstratified[:5])}"
-        raise ValueError(msg)
-    split = (
-        stratified_grouped_split(
-            documents,
-            group_of=lambda d: d.repo,
-            strata_of=lambda d: {v: d.strata[v] for v in stratify_by},
-            test_fraction=1 - development_fraction,
-            seed=seed,
-        )
-        if stratify_by
-        else grouped_split(
-            documents,
-            group_of=lambda d: d.repo,
-            test_fraction=1 - development_fraction,
-            seed=seed,
-        )
+    split = split_documents(
+        documents, development_fraction=development_fraction, seed=seed, stratify_by=stratify_by
     )
     sides = {"dev": split.dev, **({"test": split.test} if include_test else {})}
 
@@ -349,6 +330,38 @@ def calibrate(
         baseline=baseline,
         disagreements=_disagreements(split.dev),
         notes=tuple(notes),
+    )
+
+
+def split_documents(
+    documents: Sequence[RatedDocument],
+    *,
+    development_fraction: float,
+    seed: int,
+    stratify_by: Sequence[str] = (),
+) -> Split[RatedDocument]:
+    """
+    The development/test split the study uses: by repository, balancing
+    `stratify_by` when given. Raises `ValueError` when a document lacks a
+    stratum value.
+    """
+
+    unstratified = [
+        d.document_id[:12] for d in documents if any(v not in d.strata for v in stratify_by)
+    ]
+    if unstratified:
+        msg = f"documents without {', '.join(stratify_by)}: {', '.join(unstratified[:5])}"
+        raise ValueError(msg)
+    if stratify_by:
+        return stratified_grouped_split(
+            documents,
+            group_of=lambda d: d.repo,
+            strata_of=lambda d: {v: d.strata[v] for v in stratify_by},
+            test_fraction=1 - development_fraction,
+            seed=seed,
+        )
+    return grouped_split(
+        documents, group_of=lambda d: d.repo, test_fraction=1 - development_fraction, seed=seed
     )
 
 
