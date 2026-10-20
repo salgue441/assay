@@ -6,6 +6,7 @@ from assay.extract.base import SymbolExtractor
 from assay.extract.models import SourceLanguage, Symbol, SymbolInventory, SymbolKind
 from assay.extract.python import PythonExtractor
 from assay.extract.registry import UnsupportedLanguageError, get_extractor, supported_languages
+from assay.extract.typescript import TypeScriptExtractor
 
 __all__ = [
     "PythonExtractor",
@@ -14,6 +15,7 @@ __all__ = [
     "SymbolExtractor",
     "SymbolInventory",
     "SymbolKind",
+    "TypeScriptExtractor",
     "UnsupportedLanguageError",
     "get_extractor",
     "supported_languages",

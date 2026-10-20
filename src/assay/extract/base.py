@@ -26,6 +26,7 @@ class SymbolExtractor(Protocol):
 
         `module` is the dotted import name of the file (for example
         `package.sub.module`) and prefixes every qualified name; `path` is
-        recorded for lineage only.
+        recorded for lineage, and a language with several dialects may pick
+        its grammar by the file suffix (TypeScript parses `.tsx` as TSX).
         """
         ...

@@ -13,6 +13,7 @@ from types import MappingProxyType
 from assay.extract.base import SymbolExtractor
 from assay.extract.models import SourceLanguage
 from assay.extract.python import PythonExtractor
+from assay.extract.typescript import TypeScriptExtractor
 
 
 class UnsupportedLanguageError(ValueError):
@@ -22,6 +23,7 @@ class UnsupportedLanguageError(ValueError):
 _FACTORIES: Mapping[SourceLanguage, Callable[[], SymbolExtractor]] = MappingProxyType(
     {
         SourceLanguage.PYTHON: PythonExtractor,
+        SourceLanguage.TYPESCRIPT: TypeScriptExtractor,
     }
 )
 
