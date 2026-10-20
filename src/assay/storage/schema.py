@@ -74,5 +74,8 @@ def _arrow_type(annotation: Any) -> tuple[pa.DataType, bool]:
     if annotation in _SCALARS:
         return _SCALARS[annotation], False
 
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return pa.struct(list(arrow_schema(annotation))), False
+
     msg = f"no Arrow type for {annotation!r}"
     raise TypeError(msg)
