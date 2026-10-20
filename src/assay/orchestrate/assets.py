@@ -89,6 +89,9 @@ def documents_assets(partitions: CorpusPartitions) -> dg.AssetsDefinition:
     """
     Documentation for a repository epoch's sampled units, by every subject.
 
+    Units too large for a subject's context are left out before sampling,
+    since an oversized prompt cannot be sent without losing its instructions.
+
     New documents are added to those already stored, so documents from
     earlier prompts or model revisions stay as history. A failed unit or an
     exhausted budget fails the non-blocking `complete` check; rerunning
@@ -126,12 +129,15 @@ def documents_assets(partitions: CorpusPartitions) -> dg.AssetsDefinition:
             msg = f"no units stored for {context.partition_key}; run build-corpus first"
             raise dg.Failure(msg)
 
+        generator = assay.document_generator(settings)
+        language = repo.language.value
+        fitting = [unit for unit in units if generator.fits(unit, language=language)]
         sample = sample_units(
-            units, settings.generation.sample_per_partition, seed=settings.run.seed
+            fitting, settings.generation.sample_per_partition, seed=settings.run.seed
         )
         existing = store.read(DOCUMENTS, repo=repo.name, epoch=epoch)
-        report = assay.document_generator(settings).generate(
-            sample, language=repo.language.value, existing={d.document_id for d in existing}
+        report = generator.generate(
+            sample, language=language, existing={d.document_id for d in existing}
         )
         store.write(DOCUMENTS, [*existing, *report.documents], partition)
         context.log.info(
@@ -148,6 +154,7 @@ def documents_assets(partitions: CorpusPartitions) -> dg.AssetsDefinition:
             partition,
             metadata={
                 "new": len(report.documents),
+                "too_large": len(units) - len(fitting),
                 "skipped": report.skipped,
                 "failed": len(report.failures),
                 "output_tokens": sum(d.output_tokens for d in report.documents),

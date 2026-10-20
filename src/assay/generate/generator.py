@@ -92,6 +92,17 @@ class DocumentGenerator:
         self._budget = budget or Budget(None)
         self._clock = clock
 
+    def fits(self, unit: Unit, *, language: str) -> bool:
+        """
+        Whether the unit's prompt and reply fit every subject's context, by a
+        conservative estimate. Units that do not fit cannot be documented in
+        one prompt and should be left out before sampling.
+        """
+
+        return self._request(unit, language, temperature=0.0).estimated_tokens() <= min(
+            subject.client.context_tokens for subject in self._subjects
+        )
+
     def generate(
         self, units: Sequence[Unit], *, language: str, existing: Collection[str] = ()
     ) -> GenerationReport:
@@ -128,15 +139,8 @@ class DocumentGenerator:
     def _generate_one(
         self, unit: Unit, subject: Subject, identity: str, revision: str, language: str
     ) -> Document:
-        system, user = self._prompt.render(unit, language=language)
         response = subject.client.chat(
-            ChatRequest(
-                user=user,
-                system=system,
-                temperature=subject.temperature,
-                seed=self._seed,
-                max_output_tokens=self._max_output_tokens,
-            )
+            self._request(unit, language, temperature=subject.temperature)
         )
         self._budget.charge(response.cost_usd)
         return Document(
@@ -163,4 +167,14 @@ class DocumentGenerator:
             latency_seconds=response.latency_seconds,
             cost_usd=response.cost_usd,
             generated_at=self._clock(),
+        )
+
+    def _request(self, unit: Unit, language: str, *, temperature: float) -> ChatRequest:
+        system, user = self._prompt.render(unit, language=language)
+        return ChatRequest(
+            user=user,
+            system=system,
+            temperature=temperature,
+            seed=self._seed,
+            max_output_tokens=self._max_output_tokens,
         )

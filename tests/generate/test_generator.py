@@ -159,6 +159,24 @@ def test_generation_stops_once_the_budget_is_spent() -> None:
     assert report.stopped_by_budget
 
 
+def test_fits_compares_the_estimated_prompt_with_the_smallest_context() -> None:
+    small_unit, large_unit = UNITS[-1], UNITS[0]
+    system, user = PROMPT.render(small_unit, language="python")
+    small_need = ChatRequest(user=user, system=system, max_output_tokens=256).estimated_tokens()
+    budget = DocumentGenerator(
+        (
+            Subject("roomy", Provider.OLLAMA, FakeLLM(context_tokens=100_000)),
+            Subject("tight", Provider.OLLAMA, FakeLLM(context_tokens=small_need)),
+        ),
+        PROMPT,
+        seed=1,
+        max_output_tokens=256,
+    )
+
+    assert budget.fits(small_unit, language="python")
+    assert not budget.fits(large_unit, language="python")
+
+
 def test_requires_a_subject() -> None:
     with pytest.raises(ValueError, match="at least one subject"):
         DocumentGenerator((), PROMPT, seed=1, max_output_tokens=1)
