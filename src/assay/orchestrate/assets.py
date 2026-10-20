@@ -6,14 +6,15 @@ functions' annotations at definition time to inject the context and
 resources, and cannot resolve them as strings.
 """
 
+import hashlib
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
 
 import dagster as dg
 
 from assay.corpus import SOURCES, SYMBOLS, UNITS, store_snapshot_corpus
-from assay.generate import DOCUMENTS, sample_units
-from assay.judge import JUDGMENTS, REPLY_SCHEMA_HASH, Judgment
+from assay.generate import DOCUMENTS, Document, sample_units
+from assay.judge import JUDGMENTS, REPLY_SCHEMA_HASH, JudgingReport, Judgment
 from assay.metrics import METRICS_TABLE, Metric, MetricRow, get_rules, measure
 from assay.orchestrate.partitions import CorpusPartitions
 from assay.orchestrate.resources import AssayResource
@@ -296,18 +297,42 @@ def judgments_assets(partitions: CorpusPartitions) -> dg.AssetsDefinition:
         report = judge.judge(
             fitting, units, language=language, existing={j.judgment_id for j in existing}
         )
-        store.write(JUDGMENTS, [*existing, *report.judgments], partition)
+        variance = JudgingReport()
+        if epoch == 0:
+            subset = variance_subset(
+                store.read(DOCUMENTS, epoch=0),
+                size=settings.judge.variance_study.subset_size,
+                seed=settings.run.seed,
+            )
+            studied = [d for d in fitting if d.document_id in subset]
+            for temperature in _variance_temperatures(settings):
+                repeated = assay.document_judge(
+                    settings, only=settings.scoring.judge, temperature=temperature
+                ).judge(
+                    studied,
+                    units,
+                    language=language,
+                    existing={j.judgment_id for j in existing},
+                )
+                variance.judgments += repeated.judgments
+                variance.skipped += repeated.skipped
+                variance.failures += repeated.failures
+                variance.stopped_by_budget |= repeated.stopped_by_budget
+        store.write(JUDGMENTS, [*existing, *report.judgments, *variance.judgments], partition)
         context.log.info(
-            "%s: %d new judgments, %d already stored, %d failed",
+            "%s: %d new judgments, %d already stored, %d failed; variance study %d new",
             context.partition_key,
             len(report.judgments),
             report.skipped,
             len(report.failures),
+            len(variance.judgments),
         )
 
+        configured = {model.name: model.temperature for model in settings.judge.models}
         scores: dict[str, list[int]] = {}
         for judgment in [*existing, *report.judgments]:
-            scores.setdefault(judgment.criterion, []).append(judgment.score)
+            if judgment.temperature == configured.get(judgment.judge):
+                scores.setdefault(judgment.criterion, []).append(judgment.score)
         yield from _materialize_and_check(
             store,
             JUDGMENTS,  # type: ignore[arg-type]
@@ -318,20 +343,22 @@ def judgments_assets(partitions: CorpusPartitions) -> dg.AssetsDefinition:
                 "failed": len(report.failures),
                 "too_large": len(documents) - len(fitting),
                 "contradictions": sum(j.contradicts_rubric for j in report.judgments),
+                "variance_new": len(variance.judgments),
                 **{f"mean_{name}": round(sum(v) / len(v), 3) for name, v in scores.items()},
             },
         )
         yield dg.AssetCheckResult(
             asset_key=JUDGMENTS.name,
             check_name=COMPLETE_CHECK,
-            passed=not report.failures and not report.stopped_by_budget,
+            passed=not (report.failures or variance.failures)
+            and not (report.stopped_by_budget or variance.stopped_by_budget),
             severity=dg.AssetCheckSeverity.WARN,
             metadata={
-                "failed": len(report.failures),
-                "stopped_by_budget": report.stopped_by_budget,
+                "failed": len(report.failures) + len(variance.failures),
+                "stopped_by_budget": report.stopped_by_budget or variance.stopped_by_budget,
                 "failures": "\n".join(
                     f"{f.judge} {f.document_id[:12]} {f.criterion}#{f.run_index}: {f.error}"
-                    for f in report.failures
+                    for f in [*report.failures, *variance.failures]
                 ),
             },
         )
@@ -469,3 +496,24 @@ def _materialize_and_check(
     yield dg.AssetCheckResult(
         asset_key=table.name, check_name=CONTRACT_CHECK, passed=True, metadata={"rows": len(rows)}
     )
+
+
+def variance_subset(documents: Iterable[Document], *, size: int, seed: int) -> frozenset[str]:
+    """
+    The ids of the documents the variance study judges again: the first
+    `size` of `documents` in an order fixed by `seed` and each document's id,
+    so the subset is reproducible and never depends on reading order.
+    """
+
+    def rank(document: Document) -> str:
+        return hashlib.sha256(f"{seed}:variance:{document.document_id}".encode()).hexdigest()
+
+    return frozenset(d.document_id for d in sorted(documents, key=rank)[:size])
+
+
+def _variance_temperatures(settings: Settings) -> list[float]:
+    """The variance study's temperatures other than the scoring judge's own,
+    whose runs the main judging already produces."""
+
+    (model,) = (m for m in settings.judge.models if m.name == settings.scoring.judge)
+    return [t for t in settings.judge.variance_study.temperatures if t != model.temperature]

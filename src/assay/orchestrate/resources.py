@@ -58,16 +58,24 @@ class AssayResource(dg.ConfigurableResource):  # type: ignore[type-arg]
             escalate_below=scoring.routing.escalate_below,
         )
 
-    def document_judge(self, settings: Settings) -> DocumentJudge:
+    def document_judge(
+        self, settings: Settings, *, only: str | None = None, temperature: float | None = None
+    ) -> DocumentJudge:
+        """
+        Every configured judge, or `only` the named one, each at its own
+        temperature unless `temperature` overrides it (the variance study).
+        """
+
         judging = settings.judge
         judges = [
             JudgeModel(
                 name=model.name,
                 provider=model.provider,
                 client=create_client(model.provider, model.model_id),
-                temperature=model.temperature,
+                temperature=model.temperature if temperature is None else temperature,
             )
             for model in judging.models
+            if only is None or model.name == only
         ]
         return DocumentJudge(
             judges,
