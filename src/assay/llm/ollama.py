@@ -13,7 +13,7 @@ from typing import Any
 import httpx
 import ollama
 
-from assay.llm.base import ChatRequest, ChatResponse, LLMError
+from assay.llm.base import ChatRequest, ChatResponse, LLMError, PromptTooLongError
 
 _TRANSIENT_STATUS = frozenset({408, 429, 500, 502, 503, 504})
 DEFAULT_CONTEXT_TOKENS = 8192
@@ -46,6 +46,10 @@ class OllamaClient:
     def model_id(self) -> str:
         return self._model_id
 
+    @property
+    def context_tokens(self) -> int:
+        return self._context_tokens
+
     @cached_property
     def model_revision(self) -> str:
         """The installed model's digest; raises `LLMError` if it is not pulled."""
@@ -60,6 +64,18 @@ class OllamaClient:
         raise LLMError(msg, transient=False)
 
     def chat(self, request: ChatRequest) -> ChatResponse:
+        """
+        Raises `PromptTooLongError` without calling the server if the prompt
+        and reply budget may not fit `context_tokens`: Ollama would silently
+        drop the start of the prompt, instructions included.
+        """
+
+        if request.estimated_tokens() > self._context_tokens:
+            msg = (
+                f"ollama {self._model_id}: prompt and reply need about "
+                f"{request.estimated_tokens()} tokens; the context is {self._context_tokens}"
+            )
+            raise PromptTooLongError(msg)
         revision = self.model_revision
         messages = [{"role": "user", "content": request.user}]
         if request.system is not None:

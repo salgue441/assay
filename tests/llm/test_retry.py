@@ -27,6 +27,8 @@ class Flaky:
     def model_id(self) -> str:
         return "fake"
 
+    context_tokens = 4096
+
     @property
     def model_revision(self) -> str:
         self.calls += 1
@@ -68,8 +70,10 @@ def test_does_not_retry_permanent_errors() -> None:
     assert inner.calls == 1
 
 
-def test_exposes_the_inner_model_id() -> None:
-    assert retrying(Flaky([])).model_id == "fake"
+def test_exposes_the_inner_model_id_and_context() -> None:
+    client = retrying(Flaky([]))
+
+    assert (client.model_id, client.context_tokens) == ("fake", 4096)
 
 
 def test_retries_a_transient_failure_to_look_up_the_revision() -> None:

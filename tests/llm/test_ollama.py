@@ -7,7 +7,7 @@ import httpx
 import ollama
 import pytest
 
-from assay.llm import ChatRequest, LLMError, OllamaClient
+from assay.llm import ChatRequest, LLMError, OllamaClient, PromptTooLongError
 
 DIGEST = "f72c60cabf6237b0" + "0" * 48
 
@@ -137,6 +137,22 @@ def test_an_unreachable_server_is_transient() -> None:
         client_for(refuse).chat(ChatRequest(user="x"))
 
     assert excinfo.value.transient
+
+
+def test_refuses_a_prompt_that_would_overflow_the_context_without_sending_it() -> None:
+    handler, sent = serve(lambda _: httpx.Response(200, json=chat_reply()))
+    client = OllamaClient(
+        "qwen2.5-coder:3b",
+        context_tokens=1000,
+        client=ollama.Client(host="http://ollama.test", transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(PromptTooLongError, match="the context is 1000") as excinfo:
+        client.chat(ChatRequest(user="x" * 3000, max_output_tokens=10))
+
+    assert not excinfo.value.transient
+    assert sent == []
+    assert client.context_tokens == 1000
 
 
 @pytest.mark.llm

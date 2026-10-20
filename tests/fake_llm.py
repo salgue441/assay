@@ -10,6 +10,7 @@ from assay.llm import ChatRequest, ChatResponse, LLMError
 class FakeLLM:
     model_id: str = "fake-model:1b"
     model_revision: str = "rev-1"
+    context_tokens: int = 8192
     reply: Callable[[ChatRequest], str] = lambda request: "## doc"
     fail_when: Callable[[ChatRequest], bool] = lambda request: False
     cost_usd: float = 0.0
