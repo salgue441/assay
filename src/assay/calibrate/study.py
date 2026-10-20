@@ -186,8 +186,17 @@ def calibrate(
     Split `documents` by repository, fit weights on the development side
     and measure agreement with the raters on each reported side. A result
     that cannot be computed, such as a correlation over constant ratings,
-    is left out and explained in `notes`.
+    is left out and explained in `notes`. Raises `ValueError` when the
+    documents come from fewer than two repositories.
     """
+
+    repos = {d.repo for d in documents}
+    if len(repos) < 2:
+        msg = (
+            f"calibration needs rated documents from at least two repositories, one for "
+            f"each split; got {len(documents)} documents from {len(repos)}"
+        )
+        raise ValueError(msg)
 
     notes: list[str] = []
     split = grouped_split(

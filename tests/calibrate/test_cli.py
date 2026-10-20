@@ -100,6 +100,22 @@ def test_another_rater_is_marked_as_not_human_agreement(config: Path, tmp_path: 
     assert "raters llm-claude" in text
 
 
+def test_ratings_from_one_repository_cannot_be_split(config: Path, tmp_path: Path) -> None:
+    store = ParquetStore(tmp_path / "data")
+    (only,) = [
+        r
+        for r in store.read(RATINGS, repo="o/x", epoch=0)
+        if r.unit_id == "o/x-0" and r.rater_id == "r1"
+    ]
+    store.write(RATINGS, [only.model_copy(update={"rater_id": "r2"})], Partition("o/x", 1))
+
+    code, text = invoke("--config", str(config), "--rater", "r2")
+
+    assert code == 1
+    assert "at least two repositories" in text
+    assert "got 1 documents from 1" in text
+
+
 def test_no_matching_ratings_is_an_error(config: Path) -> None:
     code, text = invoke("--config", str(config), "--rater", "r9")
 
