@@ -13,6 +13,7 @@ from assay.orchestrate.assets import (
     documents_assets,
     judgments_assets,
     metrics_assets,
+    scores_assets,
 )
 from assay.orchestrate.partitions import CorpusPartitions, partition_key
 from assay.orchestrate.pipeline import (
@@ -21,6 +22,7 @@ from assay.orchestrate.pipeline import (
     GENERATE_DOCUMENTS_JOB,
     JUDGE_DOCUMENTS_JOB,
     MEASURE_DOCUMENTS_JOB,
+    SCORE_DOCUMENTS_JOB,
     PartitionRun,
     Pipeline,
     build_pipeline,
@@ -36,6 +38,7 @@ __all__ = [
     "GENERATE_DOCUMENTS_JOB",
     "JUDGE_DOCUMENTS_JOB",
     "MEASURE_DOCUMENTS_JOB",
+    "SCORE_DOCUMENTS_JOB",
     "AssayResource",
     "CorpusPartitions",
     "PartitionRun",
@@ -46,4 +49,5 @@ __all__ = [
     "judgments_assets",
     "metrics_assets",
     "partition_key",
+    "scores_assets",
 ]

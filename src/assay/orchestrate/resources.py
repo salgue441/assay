@@ -13,6 +13,7 @@ from assay.generate import Budget, DocumentGenerator, Subject
 from assay.judge import DocumentJudge, JudgeModel
 from assay.llm import create_client
 from assay.metrics import Metric, static_metrics
+from assay.scoring import ScorerConfig
 from assay.settings import Settings, load_settings
 from assay.storage import ParquetStore
 
@@ -47,6 +48,15 @@ class AssayResource(dg.ConfigurableResource):  # type: ignore[type-arg]
     def static_metrics(self, settings: Settings) -> tuple[Metric, ...]:
         critical = settings.scoring.critical_failures
         return static_metrics(integrity_critical_below=critical.referential_integrity_below)
+
+    def scorer_config(self, settings: Settings) -> ScorerConfig:
+        scoring = settings.scoring
+        return ScorerConfig(
+            weights=scoring.weights,
+            judge=scoring.judge,
+            publish_at_or_above=scoring.routing.publish_at_or_above,
+            escalate_below=scoring.routing.escalate_below,
+        )
 
     def document_judge(self, settings: Settings) -> DocumentJudge:
         judging = settings.judge

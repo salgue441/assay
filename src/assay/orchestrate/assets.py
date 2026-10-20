@@ -6,17 +6,20 @@ functions' annotations at definition time to inject the context and
 resources, and cannot resolve them as strings.
 """
 
-from collections.abc import Iterator, Mapping
+from collections import Counter
+from collections.abc import Iterable, Iterator, Mapping
 
 import dagster as dg
 
 from assay.corpus import SOURCES, SYMBOLS, UNITS, store_snapshot_corpus
 from assay.generate import DOCUMENTS, sample_units
-from assay.judge import JUDGMENTS
-from assay.metrics import METRICS_TABLE, get_rules, measure
+from assay.judge import JUDGMENTS, REPLY_SCHEMA_HASH, Judgment
+from assay.metrics import METRICS_TABLE, Metric, MetricRow, get_rules, measure
 from assay.orchestrate.partitions import CorpusPartitions
 from assay.orchestrate.resources import AssayResource
 from assay.records import Record
+from assay.scoring import SCORES, CompositeScorer, RoutingDecision
+from assay.settings import Settings
 from assay.storage import ContractError, ParquetStore, Partition, TableSpec
 
 CORPUS_GROUP = "corpus"
@@ -32,6 +35,7 @@ _DESCRIPTIONS = {
     DOCUMENTS.name: "Documentation written by each subject model for the sampled units.",
     METRICS_TABLE.name: "Deterministic metrics per document, each with an explanation.",
     JUDGMENTS.name: "Rubric grades per document, criterion, judge and run, with the issues found.",
+    SCORES.name: "Composite score and routing decision per document and scorer configuration.",
 }
 
 CORPUS_TABLES: tuple[TableSpec[Record], ...] = (SOURCES, UNITS, SYMBOLS)  # type: ignore[assignment]
@@ -333,6 +337,109 @@ def judgments_assets(partitions: CorpusPartitions) -> dg.AssetsDefinition:
         )
 
     return judging
+
+
+def scores_assets(partitions: CorpusPartitions) -> dg.AssetsDefinition:
+    """
+    The composite score and routing decision of each document of a
+    repository epoch, under the configured scorer.
+
+    Only the current metric versions and the configured judge's grades from
+    the main judging configuration are used, so old metric definitions,
+    variance-study runs and earlier rubrics never mix in. Scores of other
+    scorer configurations are kept; those of the current one are replaced.
+    """
+
+    @dg.multi_asset(
+        name="scoring",
+        specs=[
+            dg.AssetSpec(
+                SCORES.name,
+                group_name=SCORING_GROUP,
+                description=_DESCRIPTIONS[SCORES.name],
+                deps=[DOCUMENTS.name, METRICS_TABLE.name, JUDGMENTS.name],
+            )
+        ],
+        check_specs=[_contract_check_spec(SCORES)],  # type: ignore[arg-type]
+        partitions_def=partitions.definition,
+    )
+    def scoring(context: dg.AssetExecutionContext, assay: AssayResource) -> AssetEvents:
+        repo, epoch = partitions.resolve(context.partition_key)
+        settings = assay.settings()
+        store = assay.store(settings)
+        partition = Partition(repo.name, epoch)
+
+        documents = store.read(DOCUMENTS, repo=repo.name, epoch=epoch)
+        if not documents:
+            msg = f"no documents stored for {context.partition_key}; run generate first"
+            raise dg.Failure(msg)
+
+        config = assay.scorer_config(settings)
+        report = CompositeScorer(config).score(
+            documents,
+            _current_metric_rows(
+                store.read(METRICS_TABLE, repo=repo.name, epoch=epoch),
+                assay.static_metrics(settings),
+            ),
+            _scoring_judgments(store.read(JUDGMENTS, repo=repo.name, epoch=epoch), settings),
+        )
+        kept = [
+            score
+            for score in store.read(SCORES, repo=repo.name, epoch=epoch)
+            if score.scorer_version != config.version
+        ]
+        store.write(SCORES, [*kept, *report.scores], partition)
+
+        decisions = Counter(score.decision for score in report.scores)
+        context.log.info(
+            "%s: %d scored, %d unscored under scorer %s",
+            context.partition_key,
+            len(report.scores),
+            len(report.unscored),
+            config.version,
+        )
+        yield from _materialize_and_check(
+            store,
+            SCORES,  # type: ignore[arg-type]
+            partition,
+            metadata={
+                "scored": len(report.scores),
+                "unscored": len(report.unscored),
+                **{decision.value: decisions[decision] for decision in RoutingDecision},
+            },
+        )
+
+    return scoring
+
+
+def _current_metric_rows(rows: Iterable[MetricRow], metrics: Iterable[Metric]) -> list[MetricRow]:
+    """The rows of the metric versions computed today."""
+
+    current = {(metric.name, metric.version) for metric in metrics}
+    return [row for row in rows if (row.metric, row.metric_version) in current]
+
+
+def _scoring_judgments(judgments: Iterable[Judgment], settings: Settings) -> list[Judgment]:
+    """
+    The scoring judge's grades from the main judging configuration: its
+    configured model and temperature, the current rubric and reply schema,
+    the configured output limit and the run seed.
+    """
+
+    judging = settings.judge
+    (model,) = (m for m in judging.models if m.name == settings.scoring.judge)
+    rubric_hash = judging.rubric().hash
+    return [
+        judgment
+        for judgment in judgments
+        if judgment.judge == model.name
+        and judgment.model_id == model.model_id
+        and judgment.temperature == model.temperature
+        and judgment.rubric_hash == rubric_hash
+        and judgment.reply_schema_hash == REPLY_SCHEMA_HASH
+        and judgment.max_output_tokens == judging.max_output_tokens
+        and judgment.seed == settings.run.seed
+    ]
 
 
 def _materialize_and_check(
