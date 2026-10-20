@@ -166,6 +166,14 @@ def corpus(raters: tuple[str, ...] = ("r1",)) -> list[RatedDocument]:
     return join(scores, ratings, raters=raters)
 
 
+def texts(documents: list[RatedDocument]) -> dict[str, str]:
+    """A text per document whose length grows with its human rating."""
+
+    return {
+        d.document_id: "## Summary\n" + " ".join(["word"] * int(10 * d.overall)) for d in documents
+    }
+
+
 def run(documents: list[RatedDocument], *, include_test: bool = False) -> CalibrationReport:
     return calibrate(
         documents,
@@ -176,6 +184,7 @@ def run(documents: list[RatedDocument], *, include_test: bool = False) -> Calibr
         resamples=50,
         seed=7,
         include_test=include_test,
+        texts=texts(documents),
     )
 
 
