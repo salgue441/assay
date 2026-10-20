@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import copy
 import os
+import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Annotated, Any, Self
+from typing import Annotated, Any, Literal, Self
 
 import yaml
 from pydantic import (
@@ -23,6 +24,7 @@ from pydantic import (
     PositiveFloat,
     ValidationError,
     ValidationInfo,
+    field_validator,
     model_validator,
 )
 
@@ -33,6 +35,7 @@ from assay.extract import SourceLanguage, SymbolKind
 from assay.generate import PromptError, PromptTemplate
 from assay.judge import Rubric, RubricError
 from assay.llm import Provider
+from assay.rating.ratings import RATER_ID_PATTERN
 
 ENV_PREFIX = "ASSAY_"
 _NESTING = "__"
@@ -231,6 +234,50 @@ class ScoringSettings(_Section):
         return self
 
 
+class SplitSettings(_Section):
+    development_fraction: float = Field(gt=0, lt=1)
+    group_by: Literal["repo"] = "repo"
+    """No group appears in both splits."""
+    stratify_by: tuple[str, ...] = ()
+
+
+class WeightFitSettings(_Section):
+    target: Literal["overall_rating"] = "overall_rating"
+    shrink_to_prior: bool = True
+    """Shrink fitted weights toward the prior, with the strength chosen by
+    repository-grouped cross-validation on the development split."""
+
+
+class TargetSettings(_Section):
+    spearman_rho: float = Field(ge=-1, le=1)
+    weighted_kappa: float = Field(ge=-1, le=1)
+    judge_band_stability: float = Field(ge=0, le=1)
+
+
+class EvaluationSettings(_Section):
+    raters: tuple[str, ...] = Field(min_length=1)
+    """The human raters whose ratings calibrate the score, by pseudonym.
+    Ratings by anyone else, such as an LLM rater, are left out."""
+    split: SplitSettings
+    weight_fit: WeightFitSettings = WeightFitSettings()
+    bootstrap_resamples: int = Field(default=10_000, ge=1)
+    targets: TargetSettings
+    golden_set: dict[str, Any] = {}
+    baseline: dict[str, Any] = {}
+
+    @field_validator("raters")
+    @classmethod
+    def _check_raters(cls, raters: tuple[str, ...]) -> tuple[str, ...]:
+        invalid = [r for r in raters if not re.fullmatch(RATER_ID_PATTERN, r)]
+        if invalid:
+            msg = f"raters must be short lowercase pseudonyms such as r1: {', '.join(invalid)}"
+            raise ValueError(msg)
+        if len(set(raters)) != len(raters):
+            msg = f"raters must be unique: {', '.join(raters)}"
+            raise ValueError(msg)
+        return raters
+
+
 class Settings(_Section):
     run: RunSettings
     storage: StorageSettings
@@ -239,7 +286,8 @@ class Settings(_Section):
     judge: JudgeSettings
     rating: RatingSettings = RatingSettings()
     scoring: ScoringSettings
-    evaluation: dict[str, Any] = {}
+    evaluation: EvaluationSettings | None = None
+    """Needed only to calibrate."""
     drift: dict[str, Any] = {}
 
     @model_validator(mode="after")

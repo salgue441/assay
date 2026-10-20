@@ -85,6 +85,7 @@ scoring:
     escalate_below: 50
 
 evaluation:
+  raters: [r1] # human raters only; an LLM rater's ratings never calibrate the score
   split:
     development_fraction: 0.6
     group_by: repo # no repo appears in both splits
