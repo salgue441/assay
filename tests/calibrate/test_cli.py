@@ -207,3 +207,15 @@ def test_the_development_split_alone_records_nothing(config: Path, tmp_path: Pat
     invoke("--config", str(config), "--output", str(tmp_path / "r.json"))
 
     assert not (tmp_path / "data" / "reports" / "test_reveals.jsonl").exists()
+
+
+def test_judge_variance_without_repeated_judgments(config: Path, tmp_path: Path) -> None:
+    output = tmp_path / "variance.json"
+
+    result = CliRunner().invoke(
+        app, ["judge-variance", "--config", str(config), "--output", str(output)]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "no repeated judgments found" in result.output
+    assert json.loads(output.read_text(encoding="utf-8")) == []

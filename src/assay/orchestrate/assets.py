@@ -381,7 +381,7 @@ def scores_assets(partitions: CorpusPartitions) -> dg.AssetsDefinition:
                 store.read(METRICS_TABLE, repo=repo.name, epoch=epoch),
                 assay.static_metrics(settings),
             ),
-            _scoring_judgments(store.read(JUDGMENTS, repo=repo.name, epoch=epoch), settings),
+            scoring_judgments(store.read(JUDGMENTS, repo=repo.name, epoch=epoch), settings),
         )
         kept = [
             score
@@ -419,11 +419,15 @@ def _current_metric_rows(rows: Iterable[MetricRow], metrics: Iterable[Metric]) -
     return [row for row in rows if (row.metric, row.metric_version) in current]
 
 
-def _scoring_judgments(judgments: Iterable[Judgment], settings: Settings) -> list[Judgment]:
+def scoring_judgments(
+    judgments: Iterable[Judgment], settings: Settings, *, any_temperature: bool = False
+) -> list[Judgment]:
     """
     The scoring judge's grades from the main judging configuration: its
     configured model and temperature, the current rubric and reply schema,
-    the configured output limit and the run seed.
+    the configured output limit and the run seed (run `i` is judged with
+    seed `run.seed + i`). `any_temperature` also
+    keeps grades at other temperatures, such as the variance study's.
     """
 
     judging = settings.judge
@@ -434,11 +438,11 @@ def _scoring_judgments(judgments: Iterable[Judgment], settings: Settings) -> lis
         for judgment in judgments
         if judgment.judge == model.name
         and judgment.model_id == model.model_id
-        and judgment.temperature == model.temperature
+        and (any_temperature or judgment.temperature == model.temperature)
         and judgment.rubric_hash == rubric_hash
         and judgment.reply_schema_hash == REPLY_SCHEMA_HASH
         and judgment.max_output_tokens == judging.max_output_tokens
-        and judgment.seed == settings.run.seed
+        and judgment.seed == settings.run.seed + judgment.run_index
     ]
 
 

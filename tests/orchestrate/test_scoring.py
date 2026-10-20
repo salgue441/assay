@@ -124,6 +124,28 @@ def test_low_grades_escalate(project: Project, use_llm: Callable[..., None]) -> 
     assert score(project)["escalate"] == DOCUMENTS
 
 
+def test_every_judging_run_counts_toward_the_median(
+    project: Project, use_llm: Callable[..., None]
+) -> None:
+    """Regression: run i is judged with seed `run.seed + i`, and scoring kept
+    only grades with seed `run.seed`, so only the first run ever counted."""
+
+    def by_run(request: ChatRequest) -> str:
+        if request.json_schema is None:
+            return CLEAN
+        run = (request.seed or 0) - 1  # the project's run seed is 1
+        return grade(request, score=[2, 4][run])
+
+    use_llm(by_run)
+    prepare(project)
+    set_weights(project, {"accuracy": 1.0})
+
+    score(project)
+
+    stored = ParquetStore(project.data).read(SCORES)
+    assert {s.composite for s in stored} == {50.0}  # median of 2 and 4 is 3, i.e. 0.5
+
+
 def test_variance_study_and_old_runs_never_mix_in(judged: Project) -> None:
     set_weights(judged, {"referential_integrity": 0.5, "accuracy": 0.5})
     store = ParquetStore(judged.data)

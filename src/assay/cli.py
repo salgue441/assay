@@ -14,14 +14,17 @@ import typer
 import assay.rating
 from assay import __version__
 from assay.calibrate import Routing, calibrate, rated_documents
-from assay.calibrate.report import report_json, report_text
+from assay.calibrate.report import report_json, report_text, variance_json, variance_text
 from assay.calibrate.reveals import Reveal, conflicting, read_reveals, record_reveal
+from assay.calibrate.variance import judge_variance
 from assay.corpus import SOURCES, ManifestError
 from assay.generate import DOCUMENTS
+from assay.judge import JUDGMENTS
+from assay.orchestrate.assets import scoring_judgments
 from assay.orchestrate.pipeline import DEFAULT_CONFIG, PartitionRun, Pipeline, build_pipeline
 from assay.rating import RATER_ID_PATTERN, RATINGS
 from assay.scoring import SCORES, ScorerConfig
-from assay.settings import SettingsError, load_settings
+from assay.settings import Settings, SettingsError, load_settings
 from assay.storage import ParquetStore
 
 app = typer.Typer(help="Evaluate LLM-generated documentation and monitor quality drift.")
@@ -283,12 +286,7 @@ def calibrate_command(
         )
 
     scoring = settings.scoring
-    scorer = ScorerConfig(
-        weights=scoring.weights,
-        judge=scoring.judge,
-        publish_at_or_above=scoring.routing.publish_at_or_above,
-        escalate_below=scoring.routing.escalate_below,
-    )
+    scorer = _scorer_config(settings)
     store = ParquetStore(settings.storage.root)
     stored = store.read(DOCUMENTS)
     languages = {(s.repo, s.commit): s.language.value for s in store.read(SOURCES)}
@@ -320,10 +318,7 @@ def calibrate_command(
         report = calibrate(
             documents,
             prior=scoring.weights,
-            routing=Routing(
-                publish_at_or_above=scoring.routing.publish_at_or_above,
-                escalate_below=scoring.routing.escalate_below,
-            ),
+            routing=_routing(settings),
             development_fraction=evaluation.split.development_fraction,
             shrink_to_prior=evaluation.weight_fit.shrink_to_prior,
             resamples=resamples or evaluation.bootstrap_resamples,
@@ -368,6 +363,57 @@ def calibrate_command(
         )
     )
     typer.echo(f"\nreport written to {path}")
+
+
+@app.command("judge-variance")
+def judge_variance_command(
+    config: ConfigOption = DEFAULT_CONFIG,
+    output: Annotated[
+        Path | None,
+        typer.Option(help="Where to write the JSON report. [default: <storage>/reports/]"),
+    ] = None,
+) -> None:
+    """Measure how much the scoring judge's grades and routing move between runs."""
+
+    try:
+        settings = load_settings(config)
+    except SettingsError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+
+    scorer = _scorer_config(settings)
+    store = ParquetStore(settings.storage.root)
+    scores = [s for s in store.read(SCORES) if s.scorer_version == scorer.version]
+    studies = judge_variance(
+        scores,
+        scoring_judgments(store.read(JUDGMENTS), settings, any_temperature=True),
+        weights=settings.scoring.weights,
+        criteria=settings.judge.criteria,
+        routing=_routing(settings),
+    )
+    path = output or settings.storage.root / "reports" / f"judge-variance-{scorer.version}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(variance_json(studies), encoding="utf-8")
+    target = settings.evaluation.targets.judge_band_stability if settings.evaluation else 0.9
+    typer.echo(variance_text(studies, stability_target=target))
+    typer.echo(f"\nreport written to {path}")
+
+
+def _scorer_config(settings: Settings) -> ScorerConfig:
+    scoring = settings.scoring
+    return ScorerConfig(
+        weights=scoring.weights,
+        judge=scoring.judge,
+        publish_at_or_above=scoring.routing.publish_at_or_above,
+        escalate_below=scoring.routing.escalate_below,
+    )
+
+
+def _routing(settings: Settings) -> Routing:
+    routing = settings.scoring.routing
+    return Routing(
+        publish_at_or_above=routing.publish_at_or_above, escalate_below=routing.escalate_below
+    )
 
 
 def _run_partitions(
