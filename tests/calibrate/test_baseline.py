@@ -135,3 +135,17 @@ def test_documents_without_text_skip_the_models_but_not_the_comparison() -> None
 
     assert set(report.baseline["dev"]) == {"composite", "judge_alone"}
     assert any("have no stored text" in note for note in report.notes)
+
+
+@pytest.mark.parametrize("model", MODELS)
+def test_a_feature_missing_throughout_training_is_dropped(model: BaselineModel) -> None:
+    """Regression: gradient boosting failed to bin a column with no values."""
+
+    features, target, groups = learnable()
+    features[:, 2] = np.nan
+
+    predicted = fit_and_predict(features, target, groups, features[:3], model=model, seed=1)
+    out = out_of_fold(features, target, groups, model=model, seed=1)
+
+    assert np.isfinite(predicted).all()
+    assert np.isfinite(out).all()
