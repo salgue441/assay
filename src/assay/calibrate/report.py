@@ -43,10 +43,10 @@ def report_text(report: CalibrationReport, *, rho_target: float, kappa_target: f
         if side in report.fitted_correlation:
             lines += _estimates("fitted vs overall", report.fitted_correlation[side], rho)
         lines += _estimates("judge vs human kappa", report.judge_kappa[side], kappa)
-        lines.append("  decisions (scorer -> human)")
-        for scorer, humans in report.decisions[side].items():
-            counts = ", ".join(f"{human} {count}" for human, count in humans.items())
-            lines.append(f"    {scorer:<9} {counts}")
+        lines += _confusion("decisions (scorer -> human)", report.decisions[side])
+        if side in report.chosen_decisions:
+            lines += _confusion("decisions with chosen thresholds", report.chosen_decisions[side])
+        lines += _decision_quality(report, side)
         lines += _ablations(report.ablations[side])
 
     if report.fitted is not None:
@@ -110,3 +110,28 @@ def _number(value: float | None, *, signed: bool = False) -> str:
 
 def _repos(repos: tuple[str, ...]) -> str:
     return ", ".join(repos) if repos else "none"
+
+
+def _decision_quality(report: CalibrationReport, side: str) -> list[str]:
+    lines = ["  decision quality (undisputed human decisions)"]
+    for name, quality in report.decision_quality[side].items():
+        routing = report.chosen_routing if name == "chosen" else None
+        thresholds = (
+            f" (publish >= {routing.publish_at_or_above:g}, escalate < {routing.escalate_below:g})"
+            if routing
+            else ""
+        )
+        lines.append(
+            f"    {name + thresholds:<46} agreement {_number(quality.agreement)}  "
+            f"publish precision {_number(quality.publish_precision)} "
+            f"of {quality.published}  n={quality.decided}"
+        )
+    return lines
+
+
+def _confusion(title: str, table: Mapping[str, Mapping[str, int]]) -> list[str]:
+    lines = [f"  {title}"]
+    for scorer, humans in table.items():
+        counts = ", ".join(f"{human} {count}" for human, count in humans.items())
+        lines.append(f"    {scorer:<9} {counts}")
+    return lines

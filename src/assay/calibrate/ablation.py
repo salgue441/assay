@@ -12,8 +12,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy import stats
 
-from assay.rating import Decision
-from assay.scoring import RoutingDecision
+from assay.calibrate.decisions import Routing, decision_quality
 
 if TYPE_CHECKING:
     from assay.calibrate.study import RatedDocument
@@ -22,21 +21,6 @@ JUDGE = "judge"
 """Removes every judged criterion at once."""
 REJECT_RULE = "reject_rule"
 """Keeps rejected documents and routes them by their composite."""
-
-
-@dataclass(frozen=True)
-class Routing:
-    publish_at_or_above: float
-    escalate_below: float
-
-    def route(self, composite: float, *, critical: bool) -> RoutingDecision:
-        if critical:
-            return RoutingDecision.REJECT
-        if composite >= self.publish_at_or_above:
-            return RoutingDecision.PUBLISH
-        if composite < self.escalate_below:
-            return RoutingDecision.ESCALATE
-        return RoutingDecision.REVISE
 
 
 @dataclass(frozen=True)
@@ -131,25 +115,14 @@ def _outcome(
 ) -> Outcome:
     scored = [(d, c) for d in documents if (c := composite(d, weights)) is not None]
     correlated = [(d, c) for d, c in scored if not (reject_rule and d.rejected)]
-    decided = [
-        (routing.route(c, critical=reject_rule and d.rejected), d.human_decision)
-        for d, c in scored
-        if d.human_decision is not None
-    ]
+    quality = decision_quality(
+        (routing.route(c, critical=reject_rule and d.rejected), d.human_decision) for d, c in scored
+    )
     return Outcome(
         spearman=_spearman([c for _, c in correlated], [d.overall for d, _ in correlated]),
-        decision_agreement=(
-            sum(_matches(scorer, human) for scorer, human in decided) / len(decided)
-            if decided
-            else None
-        ),
+        decision_agreement=quality.agreement,
         documents=len(scored),
     )
-
-
-def _matches(scorer: RoutingDecision, human: Decision | None) -> bool:
-    expected = RoutingDecision.ESCALATE if scorer is RoutingDecision.REJECT else scorer
-    return human is not None and expected.value == human.value
 
 
 def _spearman(x: Sequence[float], y: Sequence[float]) -> float | None:

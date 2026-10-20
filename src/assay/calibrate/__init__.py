@@ -4,7 +4,7 @@ do? Pure, deterministic functions with no I/O; `study` combines the
 statistics over stored scores and ratings.
 """
 
-from assay.calibrate.ablation import Ablation, AblationStudy, Outcome, Routing, ablate
+from assay.calibrate.ablation import Ablation, AblationStudy, Outcome, ablate
 from assay.calibrate.agreement import (
     AlphaLevel,
     KappaWeights,
@@ -14,6 +14,12 @@ from assay.calibrate.agreement import (
 )
 from assay.calibrate.bootstrap import Estimate, bootstrap_interval, resample_indices
 from assay.calibrate.correlation import RankMethod, rank_correlation
+from assay.calibrate.decisions import (
+    DecisionQuality,
+    Routing,
+    choose_routing,
+    decision_quality,
+)
 from assay.calibrate.split import Split, grouped_split
 from assay.calibrate.study import (
     CalibrationReport,
@@ -30,6 +36,7 @@ __all__ = [
     "AblationStudy",
     "AlphaLevel",
     "CalibrationReport",
+    "DecisionQuality",
     "Disagreement",
     "Estimate",
     "FittedWeights",
@@ -42,7 +49,9 @@ __all__ = [
     "ablate",
     "bootstrap_interval",
     "calibrate",
+    "choose_routing",
     "choose_shrinkage",
+    "decision_quality",
     "fit_weights",
     "grouped_folds",
     "grouped_split",
