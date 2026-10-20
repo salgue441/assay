@@ -50,6 +50,7 @@ coverage.xml
 /data/raw/
 /data/cache/
 /data/reports/
+/data/golden_set/
 *.duckdb
 *.duckdb.wal
 .dvc/cache

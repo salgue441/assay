@@ -5,6 +5,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -13,18 +14,20 @@ import typer
 
 import assay.rating
 from assay import __version__
-from assay.calibrate import Routing, calibrate, rated_documents
+from assay.calibrate import RatedDocument, Routing, calibrate, rated_documents
+from assay.calibrate.golden import freeze_golden, read_active_golden, select_golden, write_golden
 from assay.calibrate.report import report_json, report_text, variance_json, variance_text
 from assay.calibrate.reveals import Reveal, conflicting, read_reveals, record_reveal
+from assay.calibrate.study import split_documents
 from assay.calibrate.variance import judge_variance
 from assay.corpus import SOURCES, ManifestError
-from assay.generate import DOCUMENTS
+from assay.generate import DOCUMENTS, Document
 from assay.judge import JUDGMENTS
 from assay.orchestrate.assets import scoring_judgments
 from assay.orchestrate.pipeline import DEFAULT_CONFIG, PartitionRun, Pipeline, build_pipeline
 from assay.rating import RATER_ID_PATTERN, RATINGS
 from assay.scoring import SCORES, ScorerConfig
-from assay.settings import Settings, SettingsError, load_settings
+from assay.settings import EvaluationSettings, Settings, SettingsError, load_settings
 from assay.storage import ParquetStore
 
 app = typer.Typer(help="Evaluate LLM-generated documentation and monitor quality drift.")
@@ -262,62 +265,16 @@ def calibrate_command(
 ) -> None:
     """Compare the composite score with human ratings and report the agreement."""
 
-    try:
-        settings = load_settings(config)
-        rubric_hash = settings.judge.rubric().hash
-    except SettingsError as exc:
-        typer.echo(f"error: {exc}", err=True)
-        raise typer.Exit(2) from exc
-    evaluation = settings.evaluation
-    if evaluation is None:
-        typer.echo("error: calibrating needs an evaluation section in the config", err=True)
-        raise typer.Exit(2)
-    raters = tuple(rater) if rater else evaluation.raters
-    invalid = [r for r in raters if not re.fullmatch(RATER_ID_PATTERN, r)]
-    if invalid:
-        typer.echo(f"error: raters must be short lowercase pseudonyms: {invalid}", err=True)
-        raise typer.Exit(2)
-    unlisted = sorted(set(raters) - set(evaluation.raters))
-    if unlisted:
-        typer.echo(
-            f"warning: {', '.join(unlisted)} not in evaluation.raters; "
-            "these results are not human agreement",
-            err=True,
-        )
-
-    scoring = settings.scoring
-    scorer = _scorer_config(settings)
-    store = ParquetStore(settings.storage.root)
-    stored = store.read(DOCUMENTS)
-    languages = {(s.repo, s.commit): s.language.value for s in store.read(SOURCES)}
-    documents = rated_documents(
-        store.read(SCORES),
-        store.read(RATINGS),
-        raters=raters,
-        scorer_version=scorer.version,
-        rubric_hash=rubric_hash,
-        strata={
-            d.document_id: {
-                "language": languages.get((d.repo, d.commit), "unknown"),
-                "unit_kind": d.kind.value,
-            }
-            for d in stored
-        },
-    )
-    if not documents:
-        typer.echo(
-            f"error: no document scored by scorer {scorer.version} is rated by "
-            f"{', '.join(raters)} under rubric {settings.judge.rubric_version}",
-            err=True,
-        )
-        raise typer.Exit(1)
+    loaded = _load_rated(config, rater)
+    settings, evaluation, scorer = loaded.settings, loaded.evaluation, loaded.scorer
+    documents = loaded.documents
 
     rated = {d.document_id for d in documents}
-    texts = {d.document_id: d.text for d in stored if d.document_id in rated}
+    texts = {d.document_id: d.text for d in loaded.stored if d.document_id in rated}
     try:
         report = calibrate(
             documents,
-            prior=scoring.weights,
+            prior=settings.scoring.weights,
             routing=_routing(settings),
             development_fraction=evaluation.split.development_fraction,
             shrink_to_prior=evaluation.weight_fit.shrink_to_prior,
@@ -336,7 +293,7 @@ def calibrate_command(
         reveal = Reveal(
             revealed_at=datetime.now(UTC),
             scorer_version=scorer.version,
-            rubric_hash=rubric_hash,
+            rubric_hash=loaded.rubric_hash,
             raters=report.raters,
             test_repos=report.test_repos,
         )
@@ -363,6 +320,65 @@ def calibrate_command(
         )
     )
     typer.echo(f"\nreport written to {path}")
+
+
+@app.command("golden-set")
+def golden_set_command(
+    config: ConfigOption = DEFAULT_CONFIG,
+    replace: Annotated[
+        bool,
+        typer.Option(
+            "--replace",
+            help="Freeze a new set although another is active. Monitoring then restarts "
+            "from the new set.",
+        ),
+    ] = False,
+) -> None:
+    """Freeze the golden set: rated development documents that drift monitoring re-scores."""
+
+    loaded = _load_rated(config, None)
+    settings, evaluation = loaded.settings, loaded.evaluation
+    try:
+        split = split_documents(
+            loaded.documents,
+            development_fraction=evaluation.split.development_fraction,
+            seed=settings.run.seed,
+            stratify_by=evaluation.split.stratify_by,
+        )
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    size = evaluation.golden_set.size
+    chosen = select_golden(
+        split.dev, size=size, seed=settings.run.seed, stratify_by=evaluation.split.stratify_by
+    )
+    golden = freeze_golden(
+        chosen,
+        frozen_at=datetime.now(UTC),
+        scorer_version=loaded.scorer.version,
+        rubric_hash=loaded.rubric_hash,
+    )
+    directory = settings.storage.root / "golden_set"
+    active = read_active_golden(directory)
+    if active is not None and active.version == golden.version:
+        typer.echo(f"golden set {golden.version} is already active; nothing changed")
+        return
+    if active is not None and not replace:
+        typer.echo(
+            f"error: golden set {active.version} ({len(active.documents)} documents, frozen "
+            f"{active.frozen_at:%Y-%m-%d}) is active. Pass --replace to freeze a new one.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    path = write_golden(directory, golden)
+    short = f" (only {len(chosen)} rated development documents, of {size} wanted)"
+    typer.echo(
+        f"froze golden set {golden.version}: {len(chosen)} documents from "
+        f"{', '.join(sorted({d.repo for d in chosen}))}" + (short if len(chosen) < size else "")
+    )
+    typer.echo(f"written to {path}")
 
 
 @app.command("judge-variance")
@@ -414,6 +430,77 @@ def _routing(settings: Settings) -> Routing:
     return Routing(
         publish_at_or_above=routing.publish_at_or_above, escalate_below=routing.escalate_below
     )
+
+
+@dataclass(frozen=True)
+class _Rated:
+    """What calibration needs: settings, the current scorer and the rated documents."""
+
+    settings: Settings
+    evaluation: EvaluationSettings
+    scorer: ScorerConfig
+    rubric_hash: str
+    stored: list[Document]
+    documents: list[RatedDocument]
+
+
+def _load_rated(config: Path, rater: list[str] | None) -> _Rated:
+    """
+    The documents scored by the current scorer and rated by `rater`, or by
+    the configured human raters. Exits 2 for an invalid config or rater and
+    1 when nothing is rated.
+    """
+
+    try:
+        settings = load_settings(config)
+        rubric_hash = settings.judge.rubric().hash
+    except SettingsError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    evaluation = settings.evaluation
+    if evaluation is None:
+        typer.echo("error: calibrating needs an evaluation section in the config", err=True)
+        raise typer.Exit(2)
+    raters = tuple(rater) if rater else evaluation.raters
+    invalid = [r for r in raters if not re.fullmatch(RATER_ID_PATTERN, r)]
+    if invalid:
+        typer.echo(f"error: raters must be short lowercase pseudonyms: {invalid}", err=True)
+        raise typer.Exit(2)
+    unlisted = sorted(set(raters) - set(evaluation.raters))
+    if unlisted:
+        typer.echo(
+            f"warning: {', '.join(unlisted)} not in evaluation.raters; "
+            "these results are not human agreement",
+            err=True,
+        )
+
+    scorer = _scorer_config(settings)
+    store = ParquetStore(settings.storage.root)
+    stored = store.read(DOCUMENTS)
+    languages = {(s.repo, s.commit): s.language.value for s in store.read(SOURCES)}
+    documents = rated_documents(
+        store.read(SCORES),
+        store.read(RATINGS),
+        raters=raters,
+        scorer_version=scorer.version,
+        rubric_hash=rubric_hash,
+        strata={
+            d.document_id: {
+                "language": languages.get((d.repo, d.commit), "unknown"),
+                "unit_kind": d.kind.value,
+            }
+            for d in stored
+        },
+    )
+    if not documents:
+        typer.echo(
+            f"error: no document scored by scorer {scorer.version} is rated by "
+            f"{', '.join(raters)} under rubric {settings.judge.rubric_version}",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    return _Rated(settings, evaluation, scorer, rubric_hash, stored, documents)
 
 
 def _run_partitions(

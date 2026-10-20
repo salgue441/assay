@@ -219,3 +219,46 @@ def test_judge_variance_without_repeated_judgments(config: Path, tmp_path: Path)
     assert result.exit_code == 0, result.output
     assert "no repeated judgments found" in result.output
     assert json.loads(output.read_text(encoding="utf-8")) == []
+
+
+def freeze(config: Path, *args: str) -> tuple[int, str]:
+    result = CliRunner().invoke(app, ["golden-set", "--config", str(config), *args])
+    return result.exit_code, result.output
+
+
+def test_the_golden_set_is_frozen_once_from_development(config: Path, tmp_path: Path) -> None:
+    code, text = freeze(config)
+
+    assert code == 0, text
+    assert "froze golden set" in text
+    assert "only 6 rated development documents, of 100 wanted" in text
+    (frozen,) = (tmp_path / "data" / "golden_set").glob("*.json")
+    data = json.loads(frozen.read_text(encoding="utf-8"))
+    assert data["raters"] == ["r1"]  # never the LLM rater
+    assert len({d["repo"] for d in data["documents"]}) == 1
+
+    code, text = freeze(config)
+
+    assert (code, "already active" in text) == (0, True)
+
+
+def test_a_changed_golden_set_needs_replace(config: Path, tmp_path: Path) -> None:
+    freeze(config)
+    store = ParquetStore(tmp_path / "data")
+    for repo in ("o/x", "o/y"):
+        ratings = store.read(RATINGS, repo=repo, epoch=0)
+        store.write(
+            RATINGS,
+            [r.model_copy(update={"overall": 5}) if r.rater_id == "r1" else r for r in ratings],
+            Partition(repo, 0),
+        )
+
+    code, text = freeze(config)
+
+    assert code == 1
+    assert "Pass --replace" in text
+
+    code, text = freeze(config, "--replace")
+
+    assert code == 0, text
+    assert len(list((tmp_path / "data" / "golden_set").glob("*.json"))) == 2

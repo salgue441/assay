@@ -256,6 +256,12 @@ class TargetSettings(_Section):
     judge_band_stability: float = Field(ge=0, le=1)
 
 
+class GoldenSetSettings(_Section):
+    source_split: Literal["development"] = "development"
+    """The test split never enters monitoring."""
+    size: int = Field(default=100, ge=1)
+
+
 class EvaluationSettings(_Section):
     raters: tuple[str, ...] = Field(min_length=1)
     """The human raters whose ratings calibrate the score, by pseudonym.
@@ -264,7 +270,7 @@ class EvaluationSettings(_Section):
     weight_fit: WeightFitSettings = WeightFitSettings()
     bootstrap_resamples: int = Field(default=10_000, ge=1)
     targets: TargetSettings
-    golden_set: dict[str, Any] = {}
+    golden_set: GoldenSetSettings = GoldenSetSettings()
     baseline: dict[str, Any] = {}
 
     @field_validator("raters")
