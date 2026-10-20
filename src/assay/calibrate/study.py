@@ -15,6 +15,7 @@ from statistics import mean, median
 import numpy as np
 from scipy import stats
 
+from assay.calibrate.ablation import AblationStudy, Routing, ablate, composite
 from assay.calibrate.agreement import krippendorff_alpha, weighted_kappa_estimate
 from assay.calibrate.bootstrap import Estimate
 from assay.calibrate.correlation import RankMethod, rank_correlation
@@ -166,6 +167,8 @@ class CalibrationReport:
     decisions: Mapping[str, Mapping[str, Mapping[str, int]]]
     """Split -> scorer decision -> human decision ("disputed" if raters
     disagree) -> count."""
+    ablations: Mapping[str, AblationStudy]
+    """Split -> the scorer under the prior weights with each part removed."""
     disagreements: tuple[Disagreement, ...]
     """The largest score-human rank gaps on the development split."""
     notes: tuple[str, ...] = field(default=())
@@ -176,6 +179,7 @@ def calibrate(
     documents: Sequence[RatedDocument],
     *,
     prior: Mapping[str, float],
+    routing: Routing,
     development_fraction: float,
     shrink_to_prior: bool,
     resamples: int,
@@ -210,9 +214,11 @@ def calibrate(
     fitted = _fit(split.dev, prior, shrink_to_prior=shrink_to_prior, seed=seed, notes=notes)
     criteria = sorted({c for d in documents for c in d.criteria})
 
-    def attempt[T](label: str, compute: Callable[[], T]) -> T | None:
+    def attempt[**P, T](
+        label: str, compute: Callable[P, T], *args: P.args, **kwargs: P.kwargs
+    ) -> T | None:
         try:
-            return compute()
+            return compute(*args, **kwargs)
         except ValueError as exc:
             notes.append(f"{label}: {exc}")
             return None
@@ -227,30 +233,39 @@ def calibrate(
                 f"{side} intervals: one repository, so the bootstrap resamples documents "
                 "and ignores how documents of a repository resemble each other"
             )
-        correlation[side] = {}
+        refit: list[tuple[RatedDocument, float]] = []
         if fitted is not None:
             fitted_correlation[side] = {}
+            refit = [(d, c) for d in kept if (c := composite(d, fitted.weights)) is not None]
+        correlation[side] = {}
         for method in METHODS:
-            prior_composites = [d.composite for d in kept]
             estimate = attempt(
                 f"{side} {method}",
-                lambda: _correlate(prior_composites, kept, method, resamples, seed),  # noqa: B023
+                _correlate,
+                [d.composite for d in kept],
+                kept,
+                method,
+                resamples,
+                seed,
             )
             if estimate is not None:
                 correlation[side][method] = estimate
             if fitted is not None:
-                fitted_composites = [_composite(d, fitted.weights) for d in kept]
                 estimate = attempt(
                     f"{side} fitted {method}",
-                    lambda: _correlate(fitted_composites, kept, method, resamples, seed),  # noqa: B023
+                    _correlate,
+                    [c for _, c in refit],
+                    [d for d, _ in refit],
+                    method,
+                    resamples,
+                    seed,
                 )
                 if estimate is not None:
                     fitted_correlation[side][method] = estimate
         judge_kappa[side] = {}
         for criterion in criteria:
             estimate = attempt(
-                f"{side} kappa {criterion}",
-                lambda: _kappa(docs, criterion, resamples, seed),  # noqa: B023
+                f"{side} kappa {criterion}", _kappa, docs, criterion, resamples, seed
             )
             if estimate is not None:
                 judge_kappa[side][criterion] = estimate
@@ -269,6 +284,10 @@ def calibrate(
         fitted_correlation=fitted_correlation,
         judge_kappa=judge_kappa,
         decisions={side: _confusion(docs) for side, docs in sides.items()},
+        ablations={
+            side: ablate(docs, weights=prior, judged=criteria, routing=routing)
+            for side, docs in sides.items()
+        },
         disagreements=_disagreements(split.dev),
         notes=tuple(notes),
     )
@@ -361,17 +380,6 @@ def _fit(
         shrinkage=shrinkage,
         documents=len(complete),
     )
-
-
-def _composite(document: RatedDocument, weights: Mapping[str, float]) -> float:
-    """The composite under `weights`, renormalised over the components the
-    document has, as the scorer does."""
-
-    present = {name: w for name, w in weights.items() if w > 0 and name in document.components}
-    total = sum(present.values())
-    if total == 0:
-        return 0.0
-    return 100 * sum(document.components[name] * w for name, w in present.items()) / total
 
 
 def _rater_alpha(
