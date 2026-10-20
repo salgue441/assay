@@ -8,7 +8,7 @@
 
 Assay is an open, reproducible evaluation harness for LLM-generated technical documentation. It scores generated docs for code with a composite of deterministic checks and an LLM judge, validates that score against blind human ratings, and monitors it over time so a model or prompt change cannot quietly degrade output.
 
-> **Status: pilot.** The pipeline runs end to end, from pinned repositories to calibration and drift checks, on a pilot of two repositories (click and dataframely, 32 documents). Human ratings are in progress, so no result is reported yet: every target below is a hypothesis to be tested. The architecture is in [`docs/SAD.md`](docs/SAD.md).
+> **Status: pilot.** The pipeline runs end to end, from pinned repositories to calibration and drift checks, on a pilot of two repositories (click and dataframely, 32 documents). Human ratings are in progress, so no result is reported yet: every target below is a hypothesis to be tested.
 
 ## Why
 
@@ -105,8 +105,6 @@ Models, prompt versions, rubric version, weights, thresholds, raters and per-run
 assay/
 ├── config/            # models, prompts, rubric, weights, thresholds, raters, budgets
 ├── data/              # Parquet tables, reports and logs (local; not in git)
-├── docs/
-│   └── SAD.md         # solution architecture document
 ├── scripts/           # environment setup and the local CI checks
 ├── src/assay/
 │   ├── corpus/        # repo pinning, snapshots, units, license checks
@@ -134,8 +132,6 @@ Still to come: the dbt marts (`transform/`), the dashboard and report, and the S
 - **Ablations.** Each component, the judge and the critical-failure rule are removed in turn to show which parts earn their place.
 - **Learned baseline.** Ridge and gradient-boosted models predict the human rating from static metrics and text features, with no LLM call, to measure how much of the judge's value they recover.
 - **Drift.** KS test and PSI on score distributions, EWMA control charts per metric, a binomial test on the rejection rate, and a frozen golden set that separates "the subject model got worse" from "the judge drifted".
-
-Full detail is in [`docs/SAD.md`](docs/SAD.md).
 
 ## Data and licensing
 
