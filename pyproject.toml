@@ -91,7 +91,7 @@ plugins = ["pydantic.mypy"]
 files = ["src"]
 
 [[tool.mypy.overrides]]
-module = ["krippendorff.*", "pyarrow.*", "textstat.*", "statsmodels.*", "scipy.*", "sklearn.*", "tree_sitter_python.*", "tree_sitter_typescript.*", "tree_sitter_go.*"]
+module = ["krippendorff.*", "pyarrow.*", "textstat.*", "statsmodels.*", "scipy.*", "sklearn.*", "tree_sitter_python.*", "tree_sitter_typescript.*", "tree_sitter_go.*", "boto3.*", "botocore.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
