@@ -46,7 +46,7 @@ bedrock = ["boto3>=1.34"]
 openai = ["openai>=1.45"]
 app = ["streamlit>=1.37", "plotly>=5.22", "matplotlib>=3.9"]
 track = ["mlflow>=2.14"]
-data = ["dvc[s3]>=3.50"]
+data = ["dvc[s3]>=3.67.1"]
 all = ["assay[bedrock,openai,app,track,data]"]
 
 [project.scripts]
