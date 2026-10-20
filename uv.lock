@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
@@ -404,7 +404,7 @@ requires-dist = [
     { name = "dagster-dbt", specifier = ">=0.24" },
     { name = "dbt-duckdb", specifier = ">=1.8" },
     { name = "duckdb", specifier = ">=1.0" },
-    { name = "dvc", extras = ["s3"], marker = "extra == 'data'", specifier = ">=3.50" },
+    { name = "dvc", extras = ["s3"], marker = "extra == 'data'", specifier = ">=3.67.1" },
     { name = "krippendorff", specifier = ">=0.6" },
     { name = "matplotlib", marker = "extra == 'app'", specifier = ">=3.9" },
     { name = "mlflow", marker = "extra == 'track'", specifier = ">=2.14" },
