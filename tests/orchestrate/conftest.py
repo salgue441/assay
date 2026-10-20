@@ -51,6 +51,14 @@ def project(tmp_path: Path, make_repo: Callable[[str], LocalRepo]) -> Project:
                     "prompt_dir": str(PROJECT_ROOT / "config" / "prompts" / "generation"),
                     "subjects": [{"name": "writer", "provider": "ollama", "model_id": "fake:1b"}],
                 },
+                "judge": {
+                    "rubric_version": "v1",
+                    "rubric_dir": str(PROJECT_ROOT / "config" / "rubrics"),
+                    "runs_per_criterion": 2,
+                    "criteria": ["accuracy", "clarity"],
+                    "variance_study": {"temperatures": [0.0], "subset_size": 1},
+                    "models": [{"name": "grader", "provider": "ollama", "model_id": "fake:1b"}],
+                },
                 "scoring": {
                     "weights": {"referential_integrity": 1.0},
                     "critical_failures": {"referential_integrity_below": 0.9},
