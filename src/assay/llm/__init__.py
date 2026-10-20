@@ -11,6 +11,7 @@ from assay.llm.base import (
     estimate_tokens,
 )
 from assay.llm.ollama import OllamaClient
+from assay.llm.pricing import TokenPrices
 from assay.llm.registry import Provider, UnsupportedProviderError, create_client
 from assay.llm.retry import RetryingClient
 
@@ -23,6 +24,7 @@ __all__ = [
     "PromptTooLongError",
     "Provider",
     "RetryingClient",
+    "TokenPrices",
     "UnsupportedProviderError",
     "create_client",
     "estimate_tokens",
