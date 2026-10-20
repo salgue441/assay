@@ -2,13 +2,13 @@
 
 **Measure whether LLM-written documentation is actually good, prove the measure agrees with people, and get alerted when quality drifts.**
 
-![status: design phase](https://img.shields.io/badge/status-design%20phase-blue)
+![status: pilot](https://img.shields.io/badge/status-pilot-yellow)
 ![python: 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)
 ![license: MIT](https://img.shields.io/badge/license-MIT-green)
 
 Assay is an open, reproducible evaluation harness for LLM-generated technical documentation. It scores generated docs for code with a composite of deterministic checks and an LLM judge, validates that score against blind human ratings, and monitors it over time so a model or prompt change cannot quietly degrade output.
 
-> **Status: design phase.** The architecture is specified (see [`docs/SAD.md`](docs/SAD.md)); implementation is starting. The commands in [Quickstart](#quickstart) describe the planned interface, and every target below is a hypothesis to be tested, not a result.
+> **Status: pilot.** The pipeline runs end to end, from pinned repositories to calibration and drift checks, on a pilot of two repositories (click and dataframely, 32 documents). Human ratings are in progress, so no result is reported yet: every target below is a hypothesis to be tested. The architecture is in [`docs/SAD.md`](docs/SAD.md).
 
 ## Why
 
@@ -33,7 +33,7 @@ flowchart TD
         H[Blind human rating] --> CAL[Calibration study<br/>correlation, kappa, ablations] --> GS[Golden set<br/>frozen by hash]
     end
     subgraph M["4 · Monitor over time"]
-        DR[Scheduled drift check] --> AL[Alerts] --> DB[Dashboard + report]
+        DR[Drift check<br/>epochs + golden set] --> AL[Alerts] --> DB[Dashboard + report<br/>planned]
     end
     D --> C1
     D --> J
@@ -45,7 +45,7 @@ flowchart TD
 
 - **Deterministic first.** Source facts are parsed before any LLM runs; checks compare generated text back to them.
 - **The judge never stands alone.** Static checks anchor the judge, and critical failures reject a document regardless of score.
-- **Humans calibrate, they do not operate.** People rate a sample to validate the scorer; they are not in the scoring path.
+- **Humans calibrate, they do not operate.** People rate a sample to validate the scorer; they are not in the scoring path. Only raters listed in the config count as human; an LLM's ratings never stand in for them.
 - **Everything is stamped.** Model id, prompt hash, data hash and package versions travel with every row.
 
 ## What gets measured
@@ -55,7 +55,7 @@ flowchart TD
 | Static   | Referential integrity: every technical name exists in the source | Deterministic                        |
 | Static   | Symbol coverage and structural completeness                      | Deterministic                        |
 | Static   | Readability                                                      | Deterministic                        |
-| Judged   | Accuracy, clarity, consistency against a written rubric          | LLM judge, repeated runs             |
+| Judged   | Accuracy, clarity, consistency against a written rubric          | LLM judge, median of repeated runs   |
 | Combined | Composite 0-100 with critical-failure rejection                  | Weighted, fit on a development split |
 
 ## Targets (hypotheses)
@@ -64,67 +64,76 @@ flowchart TD
 | ----------------------------- | ------------------------------------------------------------- |
 | Composite vs human rating     | Spearman rho >= 0.70 on a held-out split                      |
 | Judge vs human, per criterion | Weighted kappa >= 0.60                                        |
-| Judge repeatability           | Same score band in >= 90% of repeated runs                    |
-| Drift sensitivity             | Injected degradation flagged within 3 scheduled runs          |
+| Judge repeatability           | Same routing decision in >= 90% of repeated runs              |
+| Drift sensitivity             | Injected degradation flagged within 3 epochs                  |
 | Reproducibility               | Full results regenerate from one command with pinned versions |
 
 Results will be reported with confidence intervals, including negative and null results. If a target is missed, the report says so.
 
 ## Quickstart
 
-> Planned interface. Not yet implemented.
-
 ```bash
-# Requirements: Python 3.12+, uv, an API key for at least one LLM provider
+# Requirements: Python 3.12+, uv, and Ollama with the models named in config/default.yaml.
+# Bedrock and OpenAI models are optional; their keys go in .env, which is never committed.
 git clone https://github.com/salgue441/assay.git
 cd assay
 ./scripts/setup-env.sh          # env + locked deps + .env (Windows: scripts\setup-env.ps1)
-                                # then add provider keys to .env; never commit it
 
-uv run assay build-corpus       # clone pinned repos, extract symbols
-uv run assay generate           # produce documentation with the configured subject model
-uv run assay score              # static checks + LLM judge + composite
-uv run assay calibrate          # compare against human ratings
-uv run assay drift-check        # re-score golden set + rolling sample
-uv run assay report             # render the dashboard and written report
+# Build and score the corpus (each command takes --repo and --epoch to narrow it)
+uv run assay build-corpus       # clone pinned repos, extract symbols and units
+uv run assay generate           # document sampled units with every subject model
+uv run assay measure            # static checks
+uv run assay judge              # rubric grades from every judge, N runs each
+uv run assay score              # composite score and routing decision
+
+# Validate against people
+uv run assay rate --rater r1    # blind rating app; use a pseudonym, never your name
+uv run assay calibrate          # agreement with the raters in evaluation.raters
+uv run assay calibrate --test   # the held-out test split; meant to be run once
+uv run assay judge-variance     # how much grades and routing move between judge runs
+uv run assay golden-set         # freeze rated development documents for monitoring
+
+# Monitor
+uv run assay drift-check        # later epochs vs the baseline, judge vs the golden set
 ```
 
-Models, prompt versions, rubric version, weights, thresholds and per-run budget caps live in `config/`.
+Models, prompt versions, rubric version, weights, thresholds, raters and per-run budget caps live in `config/`. Reports and logs are written under the storage root (`data/` by default).
 
-## Repository layout (planned)
+## Repository layout
 
 ```text
 assay/
-├── config/            # models, prompts, rubric, weights, thresholds, budgets
-├── data/              # DVC-tracked raw layer (Parquet), local mode; S3 in CI
+├── config/            # models, prompts, rubric, weights, thresholds, raters, budgets
+├── data/              # Parquet tables, reports and logs (local; not in git)
 ├── docs/
 │   └── SAD.md         # solution architecture document
-├── infra/             # Terraform: S3 bucket, GitHub OIDC role, budget alarm
-├── transform/         # dbt-duckdb project: staging, intermediate, marts
+├── scripts/           # environment setup and the local CI checks
 ├── src/assay/
-│   ├── orchestrate/   # Dagster assets, partitions, asset checks, jobs
-│   ├── contracts/     # Pandera schemas per table
-│   ├── baseline/      # learned baseline scorer
-│   ├── corpus/        # repo pinning, snapshotting, license checks
-│   ├── extract/       # tree-sitter symbol inventory
+│   ├── corpus/        # repo pinning, snapshots, units, license checks
+│   ├── extract/       # tree-sitter symbol inventory for Python, TypeScript and Go
 │   ├── generate/      # subject-model harness
-│   ├── metrics/       # plug-in metrics behind one interface
+│   ├── llm/           # Ollama, Bedrock and OpenAI clients
+│   ├── metrics/       # plug-in static metrics behind one interface
 │   ├── judge/         # rubric-driven LLM judge
-│   ├── score/         # composite scorer and routing gate
+│   ├── scoring/       # composite scorer and routing gate
 │   ├── rating/        # blind human-rating app
-│   ├── calibrate/     # correlation, reliability, ablations, error analysis
-│   ├── drift/         # drift tests and alerting
-│   └── report/        # dashboard and report
+│   ├── calibrate/     # calibration study, ablations, baseline, variance, golden set
+│   ├── drift/         # drift statistics and the drift check
+│   ├── storage/       # content-checked Parquet tables
+│   └── orchestrate/   # Dagster assets, partitions and asset checks
 └── tests/             # metric fixtures and pipeline tests
 ```
 
+Still to come: the dbt marts (`transform/`), the dashboard and report, and the S3, DVC and Terraform setup (`infra/`).
+
 ## Methodology in brief
 
-- **Split.** Stratified development/test split by repository; weights and thresholds are chosen on development, and the test split is evaluated once.
-- **Calibration.** Spearman and Kendall correlation with bootstrap 95% intervals; Krippendorff's alpha across raters sets the ceiling on achievable agreement.
-- **Judge checks.** Quadratic-weighted kappa per criterion, within-document variance across repeated runs, and tests for length and self-preference bias.
-- **Ablations.** Each component and the critical-failure rule are removed in turn to show which parts earn their place.
-- **Drift.** KS test and PSI on score distributions, EWMA control charts per metric, and a frozen golden set that separates "the subject model got worse" from "the judge drifted".
+- **Split.** Development/test split by repository, balanced by language and unit kind; weights, routing thresholds and the baseline are chosen on development. Every evaluation of the test split is logged, and evaluating it again under a changed configuration is refused unless forced.
+- **Calibration.** Spearman and Kendall correlation with bootstrap 95% intervals resampled by repository; Krippendorff's alpha across raters sets the ceiling on achievable agreement.
+- **Judge checks.** Quadratic-weighted kappa per criterion, and the spread of grades and routing decisions across repeated runs at temperature 0 and 0.7. Length and self-preference bias tests are planned.
+- **Ablations.** Each component, the judge and the critical-failure rule are removed in turn to show which parts earn their place.
+- **Learned baseline.** Ridge and gradient-boosted models predict the human rating from static metrics and text features, with no LLM call, to measure how much of the judge's value they recover.
+- **Drift.** KS test and PSI on score distributions, EWMA control charts per metric, a binomial test on the rejection rate, and a frozen golden set that separates "the subject model got worse" from "the judge drifted".
 
 Full detail is in [`docs/SAD.md`](docs/SAD.md).
 
@@ -137,19 +146,19 @@ Full detail is in [`docs/SAD.md`](docs/SAD.md).
 
 ## Reproducibility
 
-Every run records the model identifiers, prompt hash, rubric version, data hashes, seeds and package versions. Datasets are content-hashed and versioned with DVC. CI rebuilds the report from stored results and runs unit tests for every metric against hand-built fixtures. Scheduled drift checks run in GitHub Actions.
+Every row records the model identifiers, prompt hash, rubric version, seeds and the content hashes it was derived from, and every table is checked against its contract on each read and write. CI runs formatting, lint, type checks and the test suite on Linux and Windows; `scripts/check.sh` runs the same checks locally, plus a security audit of the workflows. Versioning the data with DVC, rebuilding the report in CI and scheduled drift checks in GitHub Actions are planned.
 
 ## Roadmap
 
-- [ ] **Pilot:** small end-to-end run to measure cost and labeling power _(gate: cost and power fit)_
-- [ ] **Corpus:** pin repositories, extract symbols, generate documents
-- [ ] **Scorer:** static checks, LLM judge, composite and routing rules
-- [ ] **Calibrate:** human ratings, analysis, frozen golden set _(gate: targets met or honestly reported)_
-- [ ] **Monitor:** scheduled drift checks, sensitivity tests, public write-up
+- [ ] **Pilot:** small end-to-end run to measure cost and labeling power _(gate: cost and power fit)_. The pipeline runs on two repositories; human ratings are in progress.
+- [ ] **Corpus:** pin repositories, extract symbols, generate documents. Built; later epochs are still to be generated.
+- [x] **Scorer:** static checks, LLM judge, composite and routing rules
+- [ ] **Calibrate:** human ratings, analysis, frozen golden set _(gate: targets met or honestly reported)_. Analysis and golden set built; waiting on ratings.
+- [ ] **Monitor:** drift check built; degradation injection, scheduled runs, alerts and the public write-up to come
 
 ## Contributing
 
-Issues and pull requests are welcome, especially new metrics (they plug in behind a single `score(document, context) -> MetricResult` interface) and additional human raters. Please read `CONTRIBUTING.md` before opening a PR, and run `uv run pytest` and `uv run ruff check` first.
+Issues and pull requests are welcome, especially new metrics (they plug in behind a single `score(text, context) -> MetricResult` interface) and additional human raters. Please read `CONTRIBUTING.md` before opening a PR, and run `./scripts/check.sh` (or `scripts\check.ps1`) first.
 
 ## Citation
 
