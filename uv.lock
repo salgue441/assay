@@ -410,7 +410,7 @@ requires-dist = [
     { name = "mlflow", marker = "extra == 'track'", specifier = ">=2.14" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "ollama", specifier = ">=0.6" },
-    { name = "openai", marker = "extra == 'openai'", specifier = ">=1.40" },
+    { name = "openai", marker = "extra == 'openai'", specifier = ">=1.45" },
     { name = "pandas", specifier = ">=2.2" },
     { name = "pandera", specifier = ">=0.20" },
     { name = "plotly", marker = "extra == 'app'", specifier = ">=5.22" },
