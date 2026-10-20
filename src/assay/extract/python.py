@@ -6,25 +6,18 @@ from __future__ import annotations
 
 import ast
 import inspect
-import re
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 
 import tree_sitter_python as tspython
 from tree_sitter import Language, Node, Parser
 
-from assay.extract._treesitter import descendants_before, end_line, node_text, start_line
+from assay.extract._symbols import merge_redefinitions, normalize_signature
+from assay.extract._treesitter import end_line, node_text, start_line, text_without_comments
 from assay.extract.models import SourceLanguage, Symbol, SymbolInventory, SymbolKind
 
 _LANGUAGE = Language(tspython.language())
 _DEFINITIONS = frozenset({"function_definition", "class_definition"})
 _STRING_LITERALS = frozenset({"string", "concatenated_string"})
-
-# Applied in order to a header with comments removed, before whitespace is collapsed.
-_SIGNATURE_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r",\s*\n\s*([)\]])"), r"\1"),  # trailing comma before a closing bracket
-    (re.compile(r"([(\[])\s*\n\s*"), r"\1"),  # line break after an opening bracket
-    (re.compile(r"\s*\n\s*([)\]])"), r"\1"),  # line break before a closing bracket
-)
 
 
 class PythonExtractor:
@@ -60,7 +53,7 @@ class PythonExtractor:
             path=path,
             language=self.language,
             has_syntax_errors=root.has_error,
-            symbols=_merge_redefinitions(symbols),
+            symbols=merge_redefinitions(symbols),
         )
 
 
@@ -105,7 +98,7 @@ class _SymbolCollector:
                 qualified_name=qualified_name,
                 name=name,
                 kind=kind,
-                signature=_normalize_signature(self._header(node)),
+                signature=normalize_signature(self._header(node)),
                 docstring=self._docstring(body),
                 start_line=start_line(node),
                 end_line=end_line(node),
@@ -123,15 +116,9 @@ class _SymbolCollector:
         colon = next((child for child in node.children if child.type == ":"), None)
         header_end = colon.start_byte if colon is not None else node.end_byte
 
-        pieces: list[bytes] = []
-        cursor = node.start_byte
-        for descendant in descendants_before(node, header_end):
-            if descendant.type == "comment":
-                pieces.append(self._data[cursor : descendant.start_byte])
-                cursor = descendant.end_byte
-        pieces.append(self._data[cursor:header_end])
-
-        return b"".join(pieces).decode("utf-8")
+        return text_without_comments(
+            node, self._data, start_byte=node.start_byte, end_byte=header_end
+        )
 
     def _docstring(self, block: Node) -> str | None:
         """
@@ -174,17 +161,6 @@ def _unwrap_decorated(node: Node) -> Node:
     return node
 
 
-def _normalize_signature(header: str) -> str:
-    """
-    Collapse a possibly multi-line definition header onto one line.
-    """
-
-    for pattern, replacement in _SIGNATURE_RULES:
-        header = pattern.sub(replacement, header)
-
-    return " ".join(header.split())
-
-
 def _parse_docstring(literal: str) -> str | None:
     """
     Evaluate a string literal and clean it the way `ast.get_docstring` does.
@@ -201,15 +177,3 @@ def _parse_docstring(literal: str) -> str | None:
         return None
 
     return inspect.cleandoc(value) or None
-
-
-def _merge_redefinitions(symbols: Iterable[Symbol]) -> tuple[Symbol, ...]:
-    merged: dict[str, Symbol] = {}
-    for symbol in symbols:
-        first = merged.get(symbol.qualified_name)
-        if first is None:
-            merged[symbol.qualified_name] = symbol
-        elif first.docstring is None and symbol.docstring is not None:
-            merged[symbol.qualified_name] = first.model_copy(update={"docstring": symbol.docstring})
-
-    return tuple(merged.values())
