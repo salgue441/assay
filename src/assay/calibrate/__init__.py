@@ -13,6 +13,7 @@ from assay.calibrate.agreement import (
 from assay.calibrate.bootstrap import Estimate, bootstrap_interval, resample_indices
 from assay.calibrate.correlation import RankMethod, rank_correlation
 from assay.calibrate.split import Split, grouped_split
+from assay.calibrate.weights import choose_shrinkage, fit_weights, grouped_folds
 
 __all__ = [
     "AlphaLevel",
@@ -21,6 +22,9 @@ __all__ = [
     "RankMethod",
     "Split",
     "bootstrap_interval",
+    "choose_shrinkage",
+    "fit_weights",
+    "grouped_folds",
     "grouped_split",
     "krippendorff_alpha",
     "rank_correlation",
