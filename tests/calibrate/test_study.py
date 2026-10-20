@@ -298,3 +298,52 @@ def test_thresholds_are_chosen_on_development_and_judged_on_each_split() -> None
             sum(h.values()) for h in report.decisions[side].values()
         )
     assert report.decision_quality["dev"]["chosen"].agreement == 1.0
+
+
+def test_stratifying_needs_every_document_to_have_the_variables() -> None:
+    documents = corpus()
+
+    with pytest.raises(ValueError, match="documents without language"):
+        calibrate(
+            documents,
+            prior=PRIOR,
+            routing=ROUTING,
+            development_fraction=0.5,
+            shrink_to_prior=False,
+            resamples=20,
+            seed=7,
+            include_test=False,
+            texts=texts(documents),
+            stratify_by=("language",),
+        )
+
+
+def test_the_split_balances_the_stratum_variables() -> None:
+    scores, ratings, strata = [], [], {}
+    for r, (repo, lang) in enumerate(
+        [("o/p1", "python"), ("o/p2", "python"), ("o/g1", "go"), ("o/g2", "go")]
+    ):
+        for i in range(4):
+            name = f"{repo}-{i}"
+            scores.append(score(name, repo=repo, composite=10.0 * (i + r)))
+            ratings.append(rating(name, overall=(i + r) % 5 + 1))
+            strata[doc_id(name)] = {"language": lang}
+    documents = rated_documents(
+        scores, ratings, raters=("r1",), scorer_version=SCORER, rubric_hash=RUBRIC, strata=strata
+    )
+
+    report = calibrate(
+        documents,
+        prior=PRIOR,
+        routing=ROUTING,
+        development_fraction=0.5,
+        shrink_to_prior=False,
+        resamples=20,
+        seed=7,
+        include_test=False,
+        texts=texts(documents),
+        stratify_by=("language",),
+    )
+
+    test_languages = sorted("go" if "/g" in r else "python" for r in report.test_repos)
+    assert test_languages == ["go", "python"]

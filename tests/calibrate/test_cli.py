@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -6,12 +7,16 @@ import yaml
 from typer.testing import CliRunner
 
 from assay.cli import app
+from assay.corpus import SOURCES, Snapshot
+from assay.extract import SourceLanguage, SymbolKind
+from assay.generate import DOCUMENTS, Document
+from assay.llm import Provider
 from assay.rating import RATINGS
 from assay.scoring import SCORES, ScorerConfig
 from assay.settings import load_settings
 from assay.storage import ParquetStore, Partition
 
-from .test_study import rating, score
+from .test_study import COMMIT, doc_id, rating, score
 
 PROJECT_ROOT = Path(__file__).parents[2]
 
@@ -61,7 +66,50 @@ def config(tmp_path: Path) -> Path:
             ],
             Partition(repo, 0),
         )
+        store.write(SOURCES, [snapshot(repo)], Partition(repo, 0))
+        store.write(DOCUMENTS, [document(n, repo=repo) for n in names], Partition(repo, 0))
     return path
+
+
+def snapshot(repo: str) -> Snapshot:
+    return Snapshot(
+        repo=repo,
+        epoch=0,
+        commit=COMMIT,
+        tree_hash="0" * 40,
+        committed_at=datetime(2025, 10, 1, tzinfo=UTC),
+        license="MIT",
+        language=SourceLanguage.PYTHON,
+        created_at=date(2025, 1, 1),
+    )
+
+
+def document(name: str, *, repo: str) -> Document:
+    return Document(
+        document_id=doc_id(name),
+        unit_id=name,
+        unit_hash=doc_id(f"unit {name}"),
+        repo=repo,
+        commit=COMMIT,
+        qualified_name=name,
+        kind=SymbolKind.FUNCTION,
+        subject="writer",
+        provider=Provider.OLLAMA,
+        model_id="writer:1b",
+        model_revision="r",
+        prompt_version="v1",
+        prompt_hash="f" * 64,
+        seed=1,
+        temperature=0.0,
+        max_output_tokens=64,
+        text=f"## `{name}`\n\nDoes a thing with `value`.",
+        truncated=False,
+        prompt_tokens=1,
+        output_tokens=1,
+        latency_seconds=0.1,
+        cost_usd=0.0,
+        generated_at=datetime(2026, 10, 1, tzinfo=UTC),
+    )
 
 
 def invoke(*args: str) -> tuple[int, str]:
@@ -78,7 +126,7 @@ def test_calibrates_against_the_configured_human_raters(config: Path, tmp_path: 
     assert "12 rated documents from raters r1" in text
     assert "held out" in text
     assert "without judge" in text
-    assert "have no stored text" in text  # the fixture stores no documents
+    assert "ridge: out-of-fold predictions need at least two repositories" in text
     report = json.loads(output.read_text(encoding="utf-8"))
     assert report["raters"] == ["r1"]
     assert set(report["correlation"]) == {"dev"}
@@ -123,3 +171,39 @@ def test_no_matching_ratings_is_an_error(config: Path) -> None:
 
     assert code == 1
     assert "rated by r9" in text
+
+
+def test_the_test_split_cannot_be_evaluated_again_under_another_configuration(
+    config: Path, tmp_path: Path
+) -> None:
+    ledger = tmp_path / "data" / "reports" / "test_reveals.jsonl"
+    out = str(tmp_path / "r.json")
+    assert invoke("--config", str(config), "--test", "--output", out)[0] == 0
+    assert invoke("--config", str(config), "--test", "--output", out)[0] == 0  # same: allowed
+
+    code, text = invoke("--config", str(config), "--test", "--rater", "llm-claude", "--output", out)
+
+    assert code == 1
+    assert "already evaluated under another configuration" in text
+    assert "raters r1" in text
+    assert len(ledger.read_text(encoding="utf-8").splitlines()) == 2
+
+    code, _ = invoke(
+        "--config",
+        str(config),
+        "--test",
+        "--repeat-test",
+        "--rater",
+        "llm-claude",
+        "--output",
+        out,
+    )
+
+    assert code == 0
+    assert len(ledger.read_text(encoding="utf-8").splitlines()) == 3
+
+
+def test_the_development_split_alone_records_nothing(config: Path, tmp_path: Path) -> None:
+    invoke("--config", str(config), "--output", str(tmp_path / "r.json"))
+
+    assert not (tmp_path / "data" / "reports" / "test_reveals.jsonl").exists()

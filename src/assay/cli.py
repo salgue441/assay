@@ -5,6 +5,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -14,7 +15,8 @@ import assay.rating
 from assay import __version__
 from assay.calibrate import Routing, calibrate, rated_documents
 from assay.calibrate.report import report_json, report_text
-from assay.corpus import ManifestError
+from assay.calibrate.reveals import Reveal, conflicting, read_reveals, record_reveal
+from assay.corpus import SOURCES, ManifestError
 from assay.generate import DOCUMENTS
 from assay.orchestrate.pipeline import DEFAULT_CONFIG, PartitionRun, Pipeline, build_pipeline
 from assay.rating import RATER_ID_PATTERN, RATINGS
@@ -226,6 +228,7 @@ def rate(
 @app.command("calibrate")
 def calibrate_command(
     config: ConfigOption = DEFAULT_CONFIG,
+    *,
     rater: Annotated[
         list[str] | None,
         typer.Option(
@@ -236,6 +239,14 @@ def calibrate_command(
     test: Annotated[
         bool,
         typer.Option("--test", help="Also evaluate the held-out test split. Do this once."),
+    ] = False,
+    repeat_test: Annotated[
+        bool,
+        typer.Option(
+            "--repeat-test",
+            help="Evaluate the test split although it was evaluated under another "
+            "configuration. Recorded in reports/test_reveals.jsonl.",
+        ),
     ] = False,
     resamples: Annotated[
         int | None,
@@ -279,12 +290,21 @@ def calibrate_command(
         escalate_below=scoring.routing.escalate_below,
     )
     store = ParquetStore(settings.storage.root)
+    stored = store.read(DOCUMENTS)
+    languages = {(s.repo, s.commit): s.language.value for s in store.read(SOURCES)}
     documents = rated_documents(
         store.read(SCORES),
         store.read(RATINGS),
         raters=raters,
         scorer_version=scorer.version,
         rubric_hash=rubric_hash,
+        strata={
+            d.document_id: {
+                "language": languages.get((d.repo, d.commit), "unknown"),
+                "unit_kind": d.kind.value,
+            }
+            for d in stored
+        },
     )
     if not documents:
         typer.echo(
@@ -295,7 +315,7 @@ def calibrate_command(
         raise typer.Exit(1)
 
     rated = {d.document_id for d in documents}
-    texts = {d.document_id: d.text for d in store.read(DOCUMENTS) if d.document_id in rated}
+    texts = {d.document_id: d.text for d in stored if d.document_id in rated}
     try:
         report = calibrate(
             documents,
@@ -310,10 +330,32 @@ def calibrate_command(
             seed=settings.run.seed,
             include_test=test,
             texts=texts,
+            stratify_by=evaluation.split.stratify_by,
         )
     except ValueError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
+
+    if test:
+        ledger = settings.storage.root / "reports" / "test_reveals.jsonl"
+        reveal = Reveal(
+            revealed_at=datetime.now(UTC),
+            scorer_version=scorer.version,
+            rubric_hash=rubric_hash,
+            raters=report.raters,
+            test_repos=report.test_repos,
+        )
+        earlier = conflicting(read_reveals(ledger), reveal)
+        if earlier and not repeat_test:
+            typer.echo(
+                "error: the test split was already evaluated under another configuration:\n"
+                + "\n".join(f"  {r.describe()}" for r in earlier)
+                + "\nEvaluating it again after changes it informed leaks the test set. "
+                "Pass --repeat-test to do it anyway; it is recorded.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        record_reveal(ledger, reveal)
 
     path = output or settings.storage.root / "reports" / f"calibration-{scorer.version}.json"
     path.parent.mkdir(parents=True, exist_ok=True)

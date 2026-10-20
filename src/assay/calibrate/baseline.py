@@ -115,8 +115,9 @@ def out_of_fold(
         test = labels == held_out
         train_groups = labels[~test]
         estimator = make_model(model, groups=len(set(train_groups)), seed=seed)
-        _fit(estimator, features[~test], target[~test], train_groups)
-        predictions[test] = estimator.predict(features[test])
+        observed = _observed(features[~test])
+        _fit(estimator, features[~test][:, observed], target[~test], train_groups)
+        predictions[test] = estimator.predict(features[test][:, observed])
     return predictions
 
 
@@ -132,8 +133,9 @@ def fit_and_predict(
     """Fit (and tune) on the training rows, then predict `features`."""
 
     estimator = make_model(model, groups=len(set(train_groups)), seed=seed)
-    _fit(estimator, train_features, train_target, np.asarray(train_groups))
-    predicted: NDArray[np.float64] = estimator.predict(features)
+    observed = _observed(train_features)
+    _fit(estimator, train_features[:, observed], train_target, np.asarray(train_groups))
+    predicted: NDArray[np.float64] = estimator.predict(features[:, observed])
     return predicted
 
 
@@ -166,3 +168,11 @@ def _estimator(name: BaselineModel, seed: int) -> tuple[object, dict[str, list[o
         msg = f"unknown baseline model: {name!r}"
         raise ValueError(msg)
     return builders[name]()
+
+
+def _observed(features: NDArray[np.float64]) -> NDArray[np.bool_]:
+    """Columns with at least one value; a column missing throughout, such as
+    a metric no training document has, cannot be imputed or binned."""
+
+    observed: NDArray[np.bool_] = ~np.isnan(features).all(axis=0)
+    return observed

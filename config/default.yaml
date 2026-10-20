@@ -89,7 +89,7 @@ evaluation:
   split:
     development_fraction: 0.6
     group_by: repo # no repo appears in both splits
-    stratify_by: [language, unit_kind, contamination_group]
+    stratify_by: [language, unit_kind] # contamination_group joins with the contamination check
   weight_fit:
     target: overall_rating
     shrink_to_prior: true # lambda chosen by repo-grouped CV on development
