@@ -78,21 +78,32 @@ class MetricContext:
     @cached_property
     def public_members(self) -> tuple[Symbol, ...]:
         """Public symbols directly inside the unit: a class's methods and
-        nested classes, or a module's top-level classes and functions."""
+        nested classes, or a module's top-level classes and functions. A
+        constructor is not a member: its parameters are covered instead."""
 
         prefix = f"{self.unit.qualified_name}."
         return tuple(
-            s for s in self.unit_symbols if s.qualified_name == f"{prefix}{s.name}" and s.is_public
+            s
+            for s in self.unit_symbols
+            if s.qualified_name == f"{prefix}{s.name}"
+            and s.is_public
+            and s is not self._constructor
         )
 
     @cached_property
     def constructor_parameters(self) -> tuple[str, ...]:
-        """A class's `__init__` parameters; empty for anything else."""
+        """A class's constructor parameters (`__init__` in Python); empty for
+        anything else."""
 
-        if self.unit.kind is not SymbolKind.CLASS:
-            return ()
-        init = f"{self.unit.qualified_name}.__init__"
-        constructor = next((s for s in self.unit_symbols if s.qualified_name == init), None)
+        constructor = self._constructor
         if constructor is None or constructor.signature is None:
             return ()
         return self.rules.parameters(constructor.signature)
+
+    @cached_property
+    def _constructor(self) -> Symbol | None:
+        name = self.rules.constructor_name
+        if self.unit.kind is not SymbolKind.CLASS or name is None:
+            return None
+        qualified_name = f"{self.unit.qualified_name}.{name}"
+        return next((s for s in self.unit_symbols if s.qualified_name == qualified_name), None)

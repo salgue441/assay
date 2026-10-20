@@ -269,3 +269,27 @@ def test_large_files_extract_without_crashing() -> None:
 
     assert result.returncode == 0, f"extraction crashed (exit {result.returncode}): {result.stderr}"
     assert result.stdout.strip() == "1001"
+
+
+def test_public_means_no_leading_underscore(extractor: PythonExtractor) -> None:
+    inventory = extract(
+        extractor,
+        """
+        class Client:
+            def __init__(self) -> None: ...
+            def send(self) -> None: ...
+            def _retry(self) -> None: ...
+
+        def _helper() -> None: ...
+        """,
+        module="pkg._internal",
+    )
+
+    assert {s.qualified_name: s.is_public for s in inventory.symbols} == {
+        "pkg._internal": False,
+        "pkg._internal.Client": True,
+        "pkg._internal.Client.__init__": False,
+        "pkg._internal.Client.send": True,
+        "pkg._internal.Client._retry": False,
+        "pkg._internal._helper": False,
+    }

@@ -49,3 +49,21 @@ def descendants_before(node: Node, end_byte: int) -> Iterator[Node]:
             yield current
 
         stack.extend(reversed(current.children))
+
+
+def text_without_comments(node: Node, source: bytes, *, start_byte: int, end_byte: int) -> str:
+    """
+    The source of `node` between two byte offsets, with comments removed.
+
+    Every grammar the extractors use names its comment nodes `comment`.
+    """
+
+    pieces: list[bytes] = []
+    cursor = start_byte
+    for descendant in descendants_before(node, end_byte):
+        if descendant.type == "comment" and descendant.start_byte >= cursor:
+            pieces.append(source[cursor : descendant.start_byte])
+            cursor = descendant.end_byte
+    pieces.append(source[cursor:end_byte])
+
+    return b"".join(pieces).decode("utf-8")

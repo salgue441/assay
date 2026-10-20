@@ -34,3 +34,29 @@ def test_a_class_without_a_constructor_has_no_constructor_parameters() -> None:
 def test_only_functions_have_parameters() -> None:
     assert context("Wrapper").parameters == ()
     assert context("module").constructor_parameters == ()
+
+
+class _WrapIsTheConstructor(PythonRules):
+    @property
+    def constructor_name(self) -> str:
+        return "wrap"
+
+
+def test_the_rules_name_the_constructor_which_is_not_a_public_member() -> None:
+    wrapper = MetricContext.build(UNITS["Wrapper"], SYMBOLS, _WrapIsTheConstructor())
+
+    assert wrapper.constructor_parameters == ("text",)
+    assert [s.name for s in wrapper.public_members] == []
+
+
+class _NoConstructors(PythonRules):
+    @property
+    def constructor_name(self) -> None:
+        return None
+
+
+def test_a_language_without_constructors_has_no_constructor_parameters() -> None:
+    wrapper = MetricContext.build(UNITS["Wrapper"], SYMBOLS, _NoConstructors())
+
+    assert wrapper.constructor_parameters == ()
+    assert [s.name for s in wrapper.public_members] == ["wrap"]
