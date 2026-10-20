@@ -59,6 +59,9 @@ coverage.xml
 /corpus_cache/
 /.cache/
 
+# --- Dagster scratch storage (removed on exit; left behind after a crash) ---
+.tmp_dagster_home_*/
+
 # --- Experiment tracking ---
 mlruns/
 mlartifacts/
@@ -82,3 +85,6 @@ logs/
 *.swp
 .DS_Store
 Thumbs.db
+
+# --- Agent worktrees ---
+.claude/worktrees/

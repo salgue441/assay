@@ -1,17 +1,83 @@
 # Pinned corpus manifest. Only permissively licensed public repositories.
-# Fill in real entries; always pin exact commit SHAs.
 #
-# `epochs` is an ordered list of SHAs: the first is the baseline used for
-# calibration, each later one is a drift epoch (new/changed units are scored).
+# `epochs` is an ordered list of full commit SHAs: the first is the baseline
+# used for calibration, each later one is a drift epoch (new/changed units are
+# scored). Epochs here are the last commit on the default branch before the
+# 1st of each month; a month with no new commit is omitted.
 # Live mode appends the newest default-branch SHA at run time.
-# `created_at` places the repo in a contamination group relative to model cutoffs.
 #
-# repos:
-#   - url: https://github.com/OWNER/REPO
-#     license: MIT
-#     language: python
-#     created_at: 2024-03-01
-#     epochs:
-#       - 0000000000000000000000000000000000000000 # baseline
-#       - 1111111111111111111111111111111111111111
-repos: []
+# Selection (2026-10-19): active Python libraries, 5k-21k lines, 100+ commits
+# in the previous 12 months. click and marshmallow predate current models'
+# training data; dataframely and chonkie were created in 2025.
+# Pilot: pallets/click and Quantco/dataframely. Full study: all four.
+repos:
+  - url: https://github.com/pallets/click
+    license: BSD-3-Clause
+    language: python
+    created_at: 2014-04-24
+    epochs:
+      - 413f76f37dcdb2c475a800870d3f8c1c623238d6 # 2025-10-01 (baseline)
+      - ea70da487b05d6bb758d472a3a9ffab4a5b7fcd5 # 2025-11-01
+      - f4a1bd40e3a3617ae42427928d89b4b4d1b00e3f # 2025-12-01
+      - 1f0e6a2ecd3dd95c22290836981a38922c192596 # 2026-01-01
+      - ae46cfd6bc997804893adc799589248eadcdbc29 # 2026-03-01
+      - 781d6a88bdd30229e72a84cd6753b0235f339679 # 2026-04-01
+      - fed9049f7a07550d560a91b30c5b0b3e17d54981 # 2026-05-01
+      - c48021040a50c659b74e24ac2b11c9c9c6620a21 # 2026-06-01
+      - 6ec99f89261b32f8a50848786eca055e1967659f # 2026-07-01
+      - 00e592cea702e0b2caa0dee42489fdb1c22cd845 # 2026-08-01
+      - 36baa15ff831b939a22bc527cd76ce653ef6f66d # 2026-09-01
+      - 06b2a678741131fd577ce170e23e5ca0aeba0309 # 2026-10-01
+  - url: https://github.com/marshmallow-code/marshmallow
+    license: MIT
+    language: python
+    created_at: 2013-11-10
+    epochs:
+      - f7274d5fd53b98bb3b46bab39d36182d6f2f626f # 2025-10-01 (baseline)
+      - 4f59df052b824c7fd7ee14eb22de15fc5be5dc6a # 2025-11-01
+      - ba8058a0d475dfc41c524e636b57ceea6cdcd6b4 # 2025-12-01
+      - b99ae7990d62410cb3846bf4a63b40d1afa27a67 # 2026-01-01
+      - ba8b512b24ebf4789099f1afafe9256b1bda950e # 2026-02-01
+      - bd2cabd77cd1b1c87f36735f085efc687390b866 # 2026-03-01
+      - 3492fae7b31d310814ad16fcddad5c7717d54949 # 2026-04-01
+      - 679bc9ef9c1a579a917a0f8c30de5be4166b175d # 2026-05-01
+      - b12919269c17b504993869fa0e6d914bad792d52 # 2026-06-01
+      - cd3cda8b1a9ae740d439538cee7aa8faea58d6b9 # 2026-07-01
+      - fb6a7907d2ff9b629a88e79a65ab49ba1861bce3 # 2026-08-01
+      - 74e0043254d2390afe7f8ac83162bb99fd0aafe1 # 2026-09-01
+      - 1c63bdaf7fba217b8736e6eca8a1fcf377e41161 # 2026-10-01
+  - url: https://github.com/Quantco/dataframely
+    license: BSD-3-Clause
+    language: python
+    created_at: 2025-04-17
+    epochs:
+      - 5d1c4d7544fc91054a9fc2495e2fc3004efd890a # 2025-10-01 (baseline)
+      - d925f7f563ccfae611b4d804c51eefc9140f4bc7 # 2025-11-01
+      - 3b82fdc9893da0f6ad40b700ffbf21ebc37a7007 # 2025-12-01
+      - 127498372d442d913443f1b50d4cee86456afeed # 2026-01-01
+      - b048218b88d97e7d095493ccb8ce975e61865615 # 2026-02-01
+      - d5096b533e80a660e5a06f061447ea0043194beb # 2026-03-01
+      - 0fe05969e1f7c70949d5e0edcbd2c217832e05f2 # 2026-04-01
+      - b993da6d504f9f917172eec7b4ad953dd85784de # 2026-05-01
+      - bbdfc310ecbed92a71876a3afd72cb05a47f79f7 # 2026-06-01
+      - 3089ece71fc1a69dea083b9181e9ac93043ad421 # 2026-07-01
+      - 37ead995a25cf0d0169a1df9f2c137778ef7ee83 # 2026-08-01
+      - c6b63865000eefbe80d86ab1c9f34865d6b5dba3 # 2026-09-01
+      - 3635d29def831079da7a7ec757bef87d3c326ffb # 2026-10-01
+  - url: https://github.com/feyninc/chonkie
+    license: MIT
+    language: python
+    created_at: 2025-03-29
+    epochs:
+      - 00f0bc4a027d4e9ace7223eacafc713d1542afb0 # 2025-10-01 (baseline)
+      - 55edbad3457043573ed576c6be7e60ff64525a29 # 2025-11-01
+      - 5c4b242a0414b23e822d06ce1e00db41a39b1b0c # 2025-12-01
+      - 53a5498e2cd0afbaee194c513d78591f075d718f # 2026-01-01
+      - cd8bd643bd7045686f0a8b73a64f1c9296c0dae2 # 2026-02-01
+      - ba92795a025afc620c01a76cd7cbe78474c6e7a8 # 2026-03-01
+      - 34e09a1d22496338ca577dab03da2dc289d18aac # 2026-04-01
+      - 5d856a18bad88d9ff6b967b8bd12ed9a04ef3196 # 2026-05-01
+      - ec6875dc8d9d31eae17166a8fabab0616ac23b29 # 2026-06-01
+      - 0c3cfd025639d78bc79c82c516ed0173e8cfcd0b # 2026-07-01
+      - 0a6baea1a42c9afe9b3bc31ecb37739e744bb1ec # 2026-08-01
+      - 664454b689d68614bcfc0b1d57fc2a28b5862825 # 2026-09-01

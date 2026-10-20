@@ -17,16 +17,16 @@ classifiers = [
 
 dependencies = [
     "pydantic>=2.7",
-    "pydantic-settings>=2.3",
     "pyyaml>=6.0",
     "typer>=0.12",
     "rich>=13.7",
     "tenacity>=8.3",
+    "ollama>=0.6",
     "duckdb>=1.0",
     "pyarrow>=16.0",
     "pandas>=2.2",
     "numpy>=1.26",
-    "tree-sitter>=0.23",
+    "tree-sitter>=0.25.2,<0.26",  # 0.26.0 segfaults on large files; see test_large_files_extract_without_crashing
     "tree-sitter-python>=0.23",
     "tree-sitter-typescript>=0.23",
     "tree-sitter-go>=0.23",
@@ -43,12 +43,11 @@ dependencies = [
 
 [project.optional-dependencies]
 bedrock = ["boto3>=1.34"]
-openai = ["openai>=1.40"]
-local = ["ollama>=0.3"]
+openai = ["openai>=1.45"]
 app = ["streamlit>=1.37", "plotly>=5.22", "matplotlib>=3.9"]
 track = ["mlflow>=2.14"]
 data = ["dvc[s3]>=3.50"]
-all = ["assay[bedrock,openai,local,app,track,data]"]
+all = ["assay[bedrock,openai,app,track,data]"]
 
 [project.scripts]
 assay = "assay.cli:app"
@@ -92,13 +91,13 @@ plugins = ["pydantic.mypy"]
 files = ["src"]
 
 [[tool.mypy.overrides]]
-module = ["krippendorff.*", "textstat.*", "statsmodels.*", "scipy.*", "sklearn.*", "tree_sitter_python.*", "tree_sitter_typescript.*", "tree_sitter_go.*"]
+module = ["krippendorff.*", "pyarrow.*", "textstat.*", "statsmodels.*", "scipy.*", "sklearn.*", "tree_sitter_python.*", "tree_sitter_typescript.*", "tree_sitter_go.*", "boto3.*", "botocore.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
-addopts = "-ra --strict-markers --cov=assay --cov-report=term-missing"
+addopts = "-ra --strict-markers --import-mode=importlib -m \"not llm\" --cov=assay --cov-report=term-missing"
 markers = [
     "llm: tests that call a real LLM provider (skipped in CI by default)",
 ]
@@ -106,8 +105,16 @@ markers = [
 [tool.coverage.run]
 branch = true
 source = ["assay"]
+# The Streamlit page runs inside Streamlit's script-runner thread, where
+# coverage.py records no lines (checked with both the C tracer and
+# sys.monitoring). tests/rating/test_app.py exercises it end to end with
+# Streamlit's AppTest instead.
+omit = ["*/assay/rating/app.py"]
 
 [tool.coverage.report]
 fail_under = 80
 show_missing = true
 skip_covered = false
+
+[tool.dagster]
+module_name = "assay.orchestrate.definitions"

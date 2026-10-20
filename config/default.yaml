@@ -1,48 +1,69 @@
 # Assay default configuration. Everything that affects results lives here
 # and is hashed into each run for reproducibility.
 #
-# Model identifiers are placeholders: set them to the exact, versioned ids you
-# use and keep them pinned for the whole study.
+# Relative paths resolve against the directory Assay runs from (the project
+# root). Any value can be overridden with an ASSAY_<SECTION>__<KEY>
+# environment variable, for example ASSAY_STORAGE__ROOT=/tmp/assay or
+# ASSAY_CORPUS__UNITS__MIN_LINES=5; values are parsed as YAML.
+#
+# Model ids are pinned for the whole study; each document also records the
+# model's exact revision (for Ollama, the digest), so re-pulled weights are
+# detected rather than silently mixed in.
 
 run:
   seed: 20261019
-  budget_usd: null # hard cap per run; overridden by ASSAY_BUDGET_USD
+  budget_usd: null # hard cap per run in USD; null means no cap
 
 storage:
-  root: data # local path, or s3://<bucket>/assay in CI; overridden by ASSAY_STORAGE_ROOT
+  root: data # local directory for the Parquet tables
   duckdb_path: data/marts/assay.duckdb
 
 corpus:
-  manifest: config/repos.yaml # pinned repos: url, commit SHA, license
+  manifest: config/repos.yaml # pinned repos: url, commit SHAs, license
+  cache_dir: corpus_cache # local git checkouts, one directory per commit
   allowed_licenses: [MIT, Apache-2.0, BSD-3-Clause, BSD-2-Clause, ISC]
   languages: [python, typescript, go]
-  unit_kinds: [module, class, function]
+  units: # which symbols become documentation units
+    kinds: [module, class, function]
+    min_lines: 3
+    include_private: false
 
 generation:
-  prompt_version: v1
-  subject_models:
-    - name: subject-a
-      provider: bedrock # bedrock | openai | ollama
-      model_id: REPLACE_ME
+  prompt_version: v1 # config/prompts/generation/<version>.yaml; never edit a used version
+  prompt_dir: config/prompts/generation
+  max_output_tokens: 1024
+  sample_per_partition: 8 # pilot: 8 units x 2 subjects per repository epoch; null = every unit
+  subjects: # models that write documentation; provider: ollama | bedrock | openai
+    - name: qwen-coder-3b
+      provider: ollama
+      model_id: qwen2.5-coder:3b
+      temperature: 0.0
+    - name: phi4-mini
+      provider: ollama
+      model_id: phi4-mini
       temperature: 0.0
 
 judge:
-  rubric_version: v1
+  rubric_version: v1 # config/rubrics/<version>.yaml; never edit a used version
+  rubric_dir: config/rubrics
   runs_per_criterion: 3 # N repeated judgments to measure variance
+  max_output_tokens: 1024 # fits the bounded reply: <= 8 issues, then rationale, then score
   variance_study:
     temperatures: [0.0, 0.7]
     subset_size: 50
   criteria: [accuracy, clarity, consistency]
-  models:
-    - name: judge-a
-      provider: bedrock
-      model_id: REPLACE_ME
+  models: # gemma3 is from neither subject's family; phi4-mini judging its own output is the self-preference check
+    - name: gemma3-4b
+      provider: ollama
+      model_id: gemma3:4b
       temperature: 0.0
-    # Cross-family judge for the self-preference check:
-    # - name: judge-b
-    #   provider: openai
-    #   model_id: REPLACE_ME
-    #   temperature: 0.0
+    - name: phi4-mini
+      provider: ollama
+      model_id: phi4-mini
+      temperature: 0.0
+
+rating:
+  additional_rater_share: 0.2 # the primary rater rates everything; others rate this overlap
 
 scoring:
   # Prior weights (sum to 1); fitted weights are learned on the development split only.
@@ -54,6 +75,9 @@ scoring:
     accuracy: 0.20
     clarity: 0.15
     consistency: 0.10
+  # Judge whose grades supply the judged components: gemma3 is from neither
+  # subject's family; phi4-mini's grades are kept for the self-preference check.
+  judge: gemma3-4b
   critical_failures: # force a `reject` decision; the raw composite is still stored
     referential_integrity_below: 0.90
   routing: # applies to non-rejected documents
