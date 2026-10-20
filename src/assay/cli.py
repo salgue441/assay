@@ -139,6 +139,35 @@ def judge(
 
 
 @app.command()
+def score(
+    config: ConfigOption = DEFAULT_CONFIG,
+    repo: RepoOption = None,
+    epoch: EpochOption = None,
+    verbose: VerboseOption = False,
+) -> None:
+    """Score and route each repository epoch's documents from their metrics and judgments."""
+
+    def summarize(run: PartitionRun) -> str:
+        counts = run.metadata.get("scores", {})
+        decisions = ", ".join(
+            f"{decision} {counts.get(decision, 0)}"
+            for decision in ("publish", "revise", "escalate", "reject")
+        )
+        return (
+            f"{counts.get('scored', 0)} scored ({decisions}), {counts.get('unscored', 0)} unscored"
+        )
+
+    _run_partitions(
+        config,
+        repo=repo,
+        epoch=epoch,
+        verbose=verbose,
+        materialize=Pipeline.materialize_scores,
+        summarize=summarize,
+    )
+
+
+@app.command()
 def rate(
     rater: Annotated[str, typer.Option(help="Your pseudonym, such as r1. Never your name.")],
     config: ConfigOption = DEFAULT_CONFIG,

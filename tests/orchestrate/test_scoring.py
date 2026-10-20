@@ -3,7 +3,9 @@ from collections.abc import Callable
 
 import pytest
 import yaml
+from typer.testing import CliRunner
 
+from assay.cli import app
 from assay.judge import JUDGMENTS
 from assay.llm import ChatRequest
 from assay.metrics import METRICS_TABLE
@@ -182,3 +184,19 @@ def test_scoring_needs_documents_first(project: Project) -> None:
 
     assert not run.succeeded
     assert run.error == f"no documents stored for {PARTITION}; run generate first"
+
+
+def test_the_score_command(judged: Project) -> None:
+    result = CliRunner().invoke(app, ["score", "--config", str(judged.config), "--epoch", "0"])
+
+    assert result.exit_code == 0, result.output
+    assert "3 scored (publish 3, revise 0, escalate 0, reject 0), 0 unscored" in result.output
+
+
+def test_the_score_command_reports_missing_documents(project: Project) -> None:
+    build_pipeline(project.config).materialize_corpus(PARTITION, log_level="ERROR")
+
+    result = CliRunner().invoke(app, ["score", "--config", str(project.config), "--epoch", "0"])
+
+    assert result.exit_code == 1
+    assert f"FAILED {PARTITION:<40} no documents stored" in result.output
