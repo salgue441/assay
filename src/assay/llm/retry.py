@@ -55,6 +55,10 @@ class RetryingClient:
         return self._inner.model_id
 
     @property
+    def context_tokens(self) -> int:
+        return self._inner.context_tokens
+
+    @property
     def model_revision(self) -> str:
         return self._retrying(lambda: self._inner.model_revision)
 

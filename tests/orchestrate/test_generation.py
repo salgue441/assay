@@ -78,6 +78,20 @@ def test_failures_warn_and_are_retried_on_the_next_run(
     assert (second.metadata["documents"]["new"], second.metadata["documents"]["rows"]) == (1, 3)
 
 
+def test_units_too_large_for_the_context_are_left_out(
+    built: Project, use_llm: Callable[..., None]
+) -> None:
+    use_llm(context_tokens=400)
+
+    run = build_pipeline(built.config).materialize_documents(PARTITION, log_level="ERROR")
+
+    counts = run.metadata["documents"]
+    assert run.succeeded
+    assert run.warnings == ()
+    assert counts["too_large"] > 0
+    assert counts["new"] == 3 - counts["too_large"]
+
+
 def test_generation_needs_the_corpus_first(project: Project, use_llm: Callable[..., None]) -> None:
     run = build_pipeline(project.config).materialize_documents(PARTITION, log_level="CRITICAL")
 
@@ -88,5 +102,5 @@ def test_the_generate_command(built: Project, use_llm: Callable[..., None]) -> N
     result = CliRunner().invoke(app, ["generate", "--config", str(built.config), "--epoch", "0"])
 
     assert result.exit_code == 0, result.output
-    assert "3 new, 0 existing, 0 failed, 3 stored" in result.output
+    assert "3 new, 0 existing, 0 failed, 3 stored; 0 units too large to prompt" in result.output
     assert "1/1 partitions done" in result.output

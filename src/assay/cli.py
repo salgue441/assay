@@ -64,7 +64,8 @@ def generate(
         counts = run.metadata.get("documents", {})
         return (
             f"{counts.get('new', 0)} new, {counts.get('skipped', 0)} existing, "
-            f"{counts.get('failed', 0)} failed, {counts.get('rows', 0)} stored"
+            f"{counts.get('failed', 0)} failed, {counts.get('rows', 0)} stored; "
+            f"{counts.get('too_large', 0)} units too large to prompt"
         )
 
     _run_partitions(
