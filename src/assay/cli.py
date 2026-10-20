@@ -5,6 +5,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -14,6 +15,7 @@ import assay.rating
 from assay import __version__
 from assay.calibrate import Routing, calibrate, rated_documents
 from assay.calibrate.report import report_json, report_text
+from assay.calibrate.reveals import Reveal, conflicting, read_reveals, record_reveal
 from assay.corpus import SOURCES, ManifestError
 from assay.generate import DOCUMENTS
 from assay.orchestrate.pipeline import DEFAULT_CONFIG, PartitionRun, Pipeline, build_pipeline
@@ -226,6 +228,7 @@ def rate(
 @app.command("calibrate")
 def calibrate_command(
     config: ConfigOption = DEFAULT_CONFIG,
+    *,
     rater: Annotated[
         list[str] | None,
         typer.Option(
@@ -236,6 +239,14 @@ def calibrate_command(
     test: Annotated[
         bool,
         typer.Option("--test", help="Also evaluate the held-out test split. Do this once."),
+    ] = False,
+    repeat_test: Annotated[
+        bool,
+        typer.Option(
+            "--repeat-test",
+            help="Evaluate the test split although it was evaluated under another "
+            "configuration. Recorded in reports/test_reveals.jsonl.",
+        ),
     ] = False,
     resamples: Annotated[
         int | None,
@@ -324,6 +335,27 @@ def calibrate_command(
     except ValueError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
+
+    if test:
+        ledger = settings.storage.root / "reports" / "test_reveals.jsonl"
+        reveal = Reveal(
+            revealed_at=datetime.now(UTC),
+            scorer_version=scorer.version,
+            rubric_hash=rubric_hash,
+            raters=report.raters,
+            test_repos=report.test_repos,
+        )
+        earlier = conflicting(read_reveals(ledger), reveal)
+        if earlier and not repeat_test:
+            typer.echo(
+                "error: the test split was already evaluated under another configuration:\n"
+                + "\n".join(f"  {r.describe()}" for r in earlier)
+                + "\nEvaluating it again after changes it informed leaks the test set. "
+                "Pass --repeat-test to do it anyway; it is recorded.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        record_reveal(ledger, reveal)
 
     path = output or settings.storage.root / "reports" / f"calibration-{scorer.version}.json"
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -171,3 +171,39 @@ def test_no_matching_ratings_is_an_error(config: Path) -> None:
 
     assert code == 1
     assert "rated by r9" in text
+
+
+def test_the_test_split_cannot_be_evaluated_again_under_another_configuration(
+    config: Path, tmp_path: Path
+) -> None:
+    ledger = tmp_path / "data" / "reports" / "test_reveals.jsonl"
+    out = str(tmp_path / "r.json")
+    assert invoke("--config", str(config), "--test", "--output", out)[0] == 0
+    assert invoke("--config", str(config), "--test", "--output", out)[0] == 0  # same: allowed
+
+    code, text = invoke("--config", str(config), "--test", "--rater", "llm-claude", "--output", out)
+
+    assert code == 1
+    assert "already evaluated under another configuration" in text
+    assert "raters r1" in text
+    assert len(ledger.read_text(encoding="utf-8").splitlines()) == 2
+
+    code, _ = invoke(
+        "--config",
+        str(config),
+        "--test",
+        "--repeat-test",
+        "--rater",
+        "llm-claude",
+        "--output",
+        out,
+    )
+
+    assert code == 0
+    assert len(ledger.read_text(encoding="utf-8").splitlines()) == 3
+
+
+def test_the_development_split_alone_records_nothing(config: Path, tmp_path: Path) -> None:
+    invoke("--config", str(config), "--output", str(tmp_path / "r.json"))
+
+    assert not (tmp_path / "data" / "reports" / "test_reveals.jsonl").exists()
