@@ -11,6 +11,7 @@ from collections.abc import Callable, Mapping
 from types import MappingProxyType
 
 from assay.extract.base import SymbolExtractor
+from assay.extract.go import GoExtractor
 from assay.extract.models import SourceLanguage
 from assay.extract.python import PythonExtractor
 from assay.extract.typescript import TypeScriptExtractor
@@ -24,6 +25,7 @@ _FACTORIES: Mapping[SourceLanguage, Callable[[], SymbolExtractor]] = MappingProx
     {
         SourceLanguage.PYTHON: PythonExtractor,
         SourceLanguage.TYPESCRIPT: TypeScriptExtractor,
+        SourceLanguage.GO: GoExtractor,
     }
 )
 
