@@ -277,3 +277,15 @@ def test_the_largest_rank_gaps_come_first() -> None:
     assert report.disagreements[0].unit_id == f"{dev_repo}-odd"
     assert report.disagreements[0].rank_gap == pytest.approx(-1.0)
     assert {g.repo for g in report.disagreements} == {dev_repo}
+
+
+def test_thresholds_are_chosen_on_development_and_judged_on_each_split() -> None:
+    report = run(corpus(), include_test=True)
+
+    assert report.chosen_routing is not None
+    for side in ("dev", "test"):
+        assert set(report.decision_quality[side]) == {"configured", "chosen"}
+        assert sum(sum(h.values()) for h in report.chosen_decisions[side].values()) == sum(
+            sum(h.values()) for h in report.decisions[side].values()
+        )
+    assert report.decision_quality["dev"]["chosen"].agreement == 1.0

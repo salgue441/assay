@@ -15,10 +15,11 @@ from statistics import mean, median
 import numpy as np
 from scipy import stats
 
-from assay.calibrate.ablation import AblationStudy, Routing, ablate, composite
+from assay.calibrate.ablation import AblationStudy, ablate, composite
 from assay.calibrate.agreement import krippendorff_alpha, weighted_kappa_estimate
 from assay.calibrate.bootstrap import Estimate
 from assay.calibrate.correlation import RankMethod, rank_correlation
+from assay.calibrate.decisions import DecisionQuality, Routing, choose_routing, routed
 from assay.calibrate.split import grouped_split
 from assay.calibrate.weights import choose_shrinkage, fit_weights
 from assay.judge import MAX_SCORE, MIN_SCORE
@@ -29,6 +30,8 @@ SHRINKAGE_CANDIDATES = (0.0, 0.01, 0.1, 1.0, 10.0)
 """Candidate strengths of the pull toward the prior weights."""
 
 OVERALL = "overall"
+CONFIGURED = "configured"
+CHOSEN = "chosen"
 MAX_FOLDS = 5
 DISAGREEMENTS_SHOWN = 10
 METHODS: tuple[RankMethod, ...] = ("spearman", "kendall")
@@ -167,6 +170,14 @@ class CalibrationReport:
     decisions: Mapping[str, Mapping[str, Mapping[str, int]]]
     """Split -> scorer decision -> human decision ("disputed" if raters
     disagree) -> count."""
+    chosen_routing: Routing | None
+    """Thresholds that best match the raters' decisions on development;
+    None when no development document has an undisputed human decision."""
+    chosen_decisions: Mapping[str, Mapping[str, Mapping[str, int]]]
+    """Like `decisions`, routed by `chosen_routing`."""
+    decision_quality: Mapping[str, Mapping[str, DecisionQuality]]
+    """Split -> "configured" or "chosen" thresholds -> agreement with the
+    raters' decisions and publish precision."""
     ablations: Mapping[str, AblationStudy]
     """Split -> the scorer under the prior weights with each part removed."""
     disagreements: tuple[Disagreement, ...]
@@ -212,6 +223,9 @@ def calibrate(
     sides = {"dev": split.dev, **({"test": split.test} if include_test else {})}
 
     fitted = _fit(split.dev, prior, shrink_to_prior=shrink_to_prior, seed=seed, notes=notes)
+    chosen = choose_routing(split.dev)
+    if chosen is None:
+        notes.append("thresholds: no development document has an undisputed human decision")
     criteria = sorted({c for d in documents for c in d.criteria})
 
     def attempt[**P, T](
@@ -284,6 +298,17 @@ def calibrate(
         fitted_correlation=fitted_correlation,
         judge_kappa=judge_kappa,
         decisions={side: _confusion(docs) for side, docs in sides.items()},
+        chosen_routing=chosen,
+        chosen_decisions=(
+            {side: _confusion(docs, chosen) for side, docs in sides.items()} if chosen else {}
+        ),
+        decision_quality={
+            side: {
+                CONFIGURED: routed(docs, routing),
+                **({CHOSEN: routed(docs, chosen)} if chosen else {}),
+            }
+            for side, docs in sides.items()
+        },
         ablations={
             side: ablate(docs, weights=prior, judged=criteria, routing=routing)
             for side, docs in sides.items()
@@ -400,9 +425,17 @@ def _rater_alpha(
     return alpha
 
 
-def _confusion(documents: Sequence[RatedDocument]) -> dict[str, dict[str, int]]:
+def _confusion(
+    documents: Sequence[RatedDocument], routing: Routing | None = None
+) -> dict[str, dict[str, int]]:
+    """Scorer decision -> human decision -> count, under the stored decisions
+    or, given `routing`, under those thresholds."""
+
     counts: Counter[tuple[str, str]] = Counter(
-        (d.decision.value, d.human_decision.value if d.human_decision else "disputed")
+        (
+            (routing.route(d.composite, critical=d.rejected) if routing else d.decision).value,
+            d.human_decision.value if d.human_decision else "disputed",
+        )
         for d in documents
     )
     table: dict[str, dict[str, int]] = defaultdict(dict)
