@@ -11,7 +11,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Self
 
-from pydantic import Field, computed_field, model_validator
+from pydantic import Field, model_validator
 
 from assay.records import Record
 
@@ -36,6 +36,11 @@ class SymbolKind(StrEnum):
 class Symbol(Record):
     """
     One named, documentable thing in a source file.
+
+    `is_public` says whether documentation is expected to cover the symbol.
+    What counts as public is a language convention (a leading underscore in
+    Python, an export in TypeScript, a capital letter in Go), so each
+    extractor decides it.
     """
 
     qualified_name: str = Field(min_length=1)
@@ -45,6 +50,7 @@ class Symbol(Record):
     docstring: str | None
     start_line: int = Field(ge=1)
     end_line: int = Field(ge=1)
+    is_public: bool
 
     @model_validator(mode="after")
     def _check_consistency(self) -> Self:
@@ -57,16 +63,6 @@ class Symbol(Record):
             raise ValueError(msg)
 
         return self
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def is_public(self) -> bool:
-        """
-        Public by convention: no leading underscore on the symbol
-        itself.
-        """
-
-        return not self.name.startswith("_")
 
 
 class SymbolInventory(Record):

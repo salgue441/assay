@@ -13,6 +13,7 @@ def make_symbol(qualified_name: str = "pkg.func", **overrides: object) -> Symbol
         "docstring": None,
         "start_line": 1,
         "end_line": 2,
+        "is_public": True,
     }
     return Symbol.model_validate(fields | overrides)
 
@@ -27,16 +28,19 @@ def make_inventory(*symbols: Symbol) -> SymbolInventory:
     )
 
 
-@pytest.mark.parametrize(
-    ("name", "public"),
-    [("run", True), ("_helper", False), ("__init__", False), ("Run2", True)],
-)
-def test_is_public_follows_the_underscore_convention(name: str, public: bool) -> None:
-    assert make_symbol(f"pkg.{name}").is_public is public
+@pytest.mark.parametrize("public", [True, False])
+def test_is_public_is_stored_as_given(public: bool) -> None:
+    symbol = make_symbol("pkg._helper", is_public=public)
+
+    assert symbol.is_public is public
+    assert symbol.model_dump()["is_public"] is public
 
 
-def test_is_public_is_serialized() -> None:
-    assert make_symbol().model_dump()["is_public"] is True
+def test_is_public_is_required() -> None:
+    fields = make_symbol().model_dump(exclude={"is_public"})
+
+    with pytest.raises(ValidationError, match="is_public"):
+        Symbol.model_validate(fields)
 
 
 def test_rejects_end_line_before_start_line() -> None:
@@ -76,7 +80,7 @@ def test_names_include_simple_and_qualified_forms() -> None:
 
 
 def test_public_filters_private_symbols() -> None:
-    inventory = make_inventory(make_symbol("pkg.run"), make_symbol("pkg._internal"))
+    inventory = make_inventory(make_symbol("pkg.run"), make_symbol("pkg.internal", is_public=False))
 
     assert [s.name for s in inventory.public()] == ["run"]
 

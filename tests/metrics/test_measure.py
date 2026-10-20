@@ -50,7 +50,7 @@ def document(unit_name: str, text: str, subject: str = "writer") -> Document:
 def symbol_rows() -> list[SymbolRow]:
     return [
         SymbolRow(
-            **s.model_dump(exclude={"is_public"}),
+            **s.model_dump(),
             repo="owner/textkit",
             commit="c" * 40,
             path="textkit/core.py",

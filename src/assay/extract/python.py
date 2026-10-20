@@ -73,14 +73,16 @@ class _SymbolCollector:
         self._data = data
 
     def collect(self, root: Node, *, module: str) -> Iterator[Symbol]:
+        name = module.rsplit(".", 1)[-1]
         yield Symbol(
             qualified_name=module,
-            name=module.rsplit(".", 1)[-1],
+            name=name,
             kind=SymbolKind.MODULE,
             signature=None,
             docstring=self._docstring(root),
             start_line=1,
             end_line=end_line(root),
+            is_public=_is_public(name),
         )
         yield from self._definitions(root, scope=module, in_class=False)
 
@@ -107,6 +109,7 @@ class _SymbolCollector:
                 docstring=self._docstring(body),
                 start_line=start_line(node),
                 end_line=end_line(node),
+                is_public=_is_public(name),
             )
 
             if kind is SymbolKind.CLASS:
@@ -145,6 +148,14 @@ class _SymbolCollector:
             return None
 
         return _parse_docstring(node_text(expression, self._data))
+
+
+def _is_public(name: str) -> bool:
+    """
+    Public by convention: no leading underscore on the name itself.
+    """
+
+    return not name.startswith("_")
 
 
 def _kind(node: Node, *, in_class: bool) -> SymbolKind:
