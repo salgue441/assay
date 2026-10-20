@@ -1,7 +1,10 @@
+from types import MappingProxyType
+
 import pytest
 
-from assay.extract import UnsupportedLanguageError
-from assay.metrics import PythonRules, get_rules
+from assay.extract import SourceLanguage, UnsupportedLanguageError
+from assay.metrics import PythonRules, get_rules, rules
+from assay.metrics.rules import GoRules, TypeScriptRules
 
 RULES = PythonRules()
 
@@ -47,12 +50,23 @@ def test_ambient_names_exclude_arbitrary_words() -> None:
     assert "wrap_text" not in RULES.ambient_names
 
 
-def test_get_rules() -> None:
-    assert isinstance(get_rules("python"), PythonRules)
-    with pytest.raises(UnsupportedLanguageError, match="no static-check rules for 'go'"):
-        get_rules("go")
+@pytest.mark.parametrize(
+    ("language", "rules_type"),
+    [("python", PythonRules), ("typescript", TypeScriptRules), (SourceLanguage.GO, GoRules)],
+)
+def test_get_rules(language: str, rules_type: type[object]) -> None:
+    assert isinstance(get_rules(language), rules_type)
+
+
+def test_get_rules_rejects_unknown_and_unimplemented_languages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     with pytest.raises(UnsupportedLanguageError, match="unknown language"):
         get_rules("cobol")
+
+    monkeypatch.setattr(rules, "_RULES", MappingProxyType({}))
+    with pytest.raises(UnsupportedLanguageError, match="no static-check rules for 'go'"):
+        get_rules("go")
 
 
 def test_constructor_name() -> None:
