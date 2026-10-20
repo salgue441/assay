@@ -75,6 +75,9 @@ scoring:
     accuracy: 0.20
     clarity: 0.15
     consistency: 0.10
+  # Judge whose grades supply the judged components: gemma3 is from neither
+  # subject's family; phi4-mini's grades are kept for the self-preference check.
+  judge: gemma3-4b
   critical_failures: # force a `reject` decision; the raw composite is still stored
     referential_integrity_below: 0.90
   routing: # applies to non-rejected documents
