@@ -7,6 +7,8 @@ import yaml
 from ..local_repo import LocalRepo
 from .project import Project
 
+PROJECT_ROOT = Path(__file__).parents[2]
+
 MODULE = '''"""Greetings."""
 
 
@@ -43,6 +45,11 @@ def project(tmp_path: Path, make_repo: Callable[[str], LocalRepo]) -> Project:
                     "allowed_licenses": ["MIT"],
                     "languages": ["python"],
                     "units": {"min_lines": 1},
+                },
+                "generation": {
+                    "prompt_version": "v1",
+                    "prompt_dir": str(PROJECT_ROOT / "config" / "prompts" / "generation"),
+                    "subjects": [{"name": "writer", "provider": "ollama", "model_id": "fake:1b"}],
                 },
             }
         ),

@@ -20,6 +20,11 @@ MINIMAL = {
         "allowed_licenses": ["MIT"],
         "languages": ["python"],
     },
+    "generation": {
+        "prompt_version": "v1",
+        "prompt_dir": str(PROJECT_ROOT / "config" / "prompts" / "generation"),
+        "subjects": [{"name": "writer", "provider": "ollama", "model_id": "phi4-mini"}],
+    },
 }
 
 
@@ -62,7 +67,7 @@ def test_defaults_fill_optional_sections(tmp_path: Path) -> None:
 
     assert settings.run.budget_usd is None
     assert settings.corpus.units.policy() == UnitPolicy()
-    assert settings.generation == {}
+    assert settings.judge == {}
 
 
 def test_environment_overrides_nested_values_with_yaml_types(tmp_path: Path) -> None:
@@ -117,6 +122,39 @@ def test_invalid_settings_name_the_file(
     with pytest.raises(SettingsError, match=problem) as excinfo:
         load(tmp_path, MINIMAL | change)
     assert "config.yaml" in str(excinfo.value)
+
+
+def generation(**changes: object) -> dict[str, object]:
+    return {"generation": MINIMAL["generation"] | changes}
+
+
+def test_generation_settings_load_the_prompt(tmp_path: Path) -> None:
+    generation_settings = load(tmp_path).generation
+
+    assert generation_settings.prompt().version == "v1"
+    assert generation_settings.max_output_tokens == 1024
+    assert generation_settings.sample_per_partition is None
+    assert generation_settings.subjects[0].temperature == 0.0
+
+
+@pytest.mark.parametrize(
+    ("change", "problem"),
+    [
+        (generation(prompt_version="v404"), "v404.yaml"),
+        (generation(subjects=[]), "at least 1 item"),
+        (
+            generation(subjects=[{"name": "w", "provider": "ollama", "model_id": "m"}] * 2),
+            "subject names must be unique",
+        ),
+        (generation(subjects=[{"name": "w", "provider": "cohere", "model_id": "m"}]), "provider"),
+        (generation(sample_per_partition=0), "greater than or equal to 1"),
+    ],
+)
+def test_invalid_generation_settings_fail_at_load(
+    tmp_path: Path, change: dict[str, object], problem: str
+) -> None:
+    with pytest.raises(SettingsError, match=problem):
+        load(tmp_path, MINIMAL | change)
 
 
 def test_unreadable_files_raise_settings_error(tmp_path: Path) -> None:
