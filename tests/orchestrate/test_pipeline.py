@@ -12,6 +12,7 @@ from assay.orchestrate import (
     GENERATE_DOCUMENTS_JOB,
     JUDGE_DOCUMENTS_JOB,
     MEASURE_DOCUMENTS_JOB,
+    SCORE_DOCUMENTS_JOB,
     build_pipeline,
 )
 from assay.storage import ContractError, ParquetStore
@@ -88,6 +89,7 @@ def test_definitions_load_with_a_job_per_stage(project: Project) -> None:
         GENERATE_DOCUMENTS_JOB,
         MEASURE_DOCUMENTS_JOB,
         JUDGE_DOCUMENTS_JOB,
+        SCORE_DOCUMENTS_JOB,
     ):
         job = defs.resolve_job_def(name)
         assert job.partitions_def is not None
@@ -99,6 +101,7 @@ def test_definitions_load_with_a_job_per_stage(project: Project) -> None:
         "documents",
         "metrics",
         "judgments",
+        "scores",
     }
 
 

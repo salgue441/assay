@@ -86,6 +86,7 @@ def write_config(root: Path) -> Path:
                 },
                 "scoring": {
                     "weights": {"accuracy": 1.0},
+                    "judge": "j",
                     "critical_failures": {"referential_integrity_below": 0.9},
                     "routing": {"publish_at_or_above": 80, "escalate_below": 50},
                 },

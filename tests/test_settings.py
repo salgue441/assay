@@ -35,6 +35,7 @@ MINIMAL = {
     },
     "scoring": {
         "weights": {"referential_integrity": 0.5, "readability": 0.5},
+        "judge": "grader",
         "critical_failures": {"referential_integrity_below": 0.9},
         "routing": {"publish_at_or_above": 80, "escalate_below": 50},
     },
@@ -181,6 +182,7 @@ def test_scoring_settings_load() -> None:
 
     assert settings.scoring.critical_failures.referential_integrity_below == 0.9
     assert sum(settings.scoring.weights.values()) == pytest.approx(1.0)
+    assert settings.scoring.judge == "gemma3-4b"
 
 
 @pytest.mark.parametrize(
@@ -189,6 +191,11 @@ def test_scoring_settings_load() -> None:
         (scoring(weights={"a": 0.5, "b": 0.4}), "weights must sum to 1, got 0.900000"),
         (scoring(weights={"a": 1.5, "b": -0.5}), "must not be negative: b"),
         (scoring(weights={}), "at least 1 item"),
+        (scoring(judge=""), "at least 1 character"),
+        (
+            scoring(judge="gemma3-4b"),
+            "scoring.judge 'gemma3-4b' is not a configured judge; choose one of: grader",
+        ),
         (
             scoring(routing={"publish_at_or_above": 50, "escalate_below": 80}),
             "escalate_below must not exceed",

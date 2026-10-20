@@ -213,6 +213,9 @@ class ScoringSettings(_Section):
     weights: dict[str, float] = Field(min_length=1)
     """Prior weights per metric or judged criterion; fitted weights replace
     them after calibration on the development split."""
+    judge: str = Field(min_length=1)
+    """The judge model, by its configured name, whose grades supply the
+    judged components."""
     critical_failures: CriticalFailureSettings
     routing: RoutingSettings
 
@@ -238,6 +241,17 @@ class Settings(_Section):
     scoring: ScoringSettings
     evaluation: dict[str, Any] = {}
     drift: dict[str, Any] = {}
+
+    @model_validator(mode="after")
+    def _check_scoring_judge(self) -> Self:
+        judges = [model.name for model in self.judge.models]
+        if self.scoring.judge not in judges:
+            msg = (
+                f"scoring.judge {self.scoring.judge!r} is not a configured judge; "
+                f"choose one of: {', '.join(judges)}"
+            )
+            raise ValueError(msg)
+        return self
 
 
 def load_settings(

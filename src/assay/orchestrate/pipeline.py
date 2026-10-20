@@ -17,6 +17,7 @@ from assay.orchestrate.assets import (
     documents_assets,
     judgments_assets,
     metrics_assets,
+    scores_assets,
 )
 from assay.orchestrate.partitions import CorpusPartitions
 from assay.orchestrate.resources import AssayResource
@@ -27,6 +28,7 @@ BUILD_CORPUS_JOB = "build_corpus"
 GENERATE_DOCUMENTS_JOB = "generate_documents"
 MEASURE_DOCUMENTS_JOB = "measure_documents"
 JUDGE_DOCUMENTS_JOB = "judge_documents"
+SCORE_DOCUMENTS_JOB = "score_documents"
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,11 +53,12 @@ class Pipeline:
     documents: dg.AssetsDefinition
     metrics: dg.AssetsDefinition
     judgments: dg.AssetsDefinition
+    scores: dg.AssetsDefinition
     resources: dict[str, AssayResource]
 
     @property
     def assets(self) -> list[dg.AssetsDefinition]:
-        return [self.corpus, self.documents, self.metrics, self.judgments]
+        return [self.corpus, self.documents, self.metrics, self.judgments, self.scores]
 
     def definitions(self) -> dg.Definitions:
         return dg.Definitions(
@@ -81,6 +84,11 @@ class Pipeline:
                     selection=dg.AssetSelection.assets(self.judgments),
                     description="Grade a repository epoch's documents with every judge.",
                 ),
+                dg.define_asset_job(
+                    SCORE_DOCUMENTS_JOB,
+                    selection=dg.AssetSelection.assets(self.scores),
+                    description="Score and route a repository epoch's documents.",
+                ),
             ],
             resources=self.resources,
         )
@@ -104,6 +112,11 @@ class Pipeline:
         """Grade one partition's documents; they must already be stored."""
 
         return self._materialize(self.judgments, key, log_level)
+
+    def materialize_scores(self, key: str, *, log_level: str = "INFO") -> PartitionRun:
+        """Score one partition's documents from their stored metrics and judgments."""
+
+        return self._materialize(self.scores, key, log_level)
 
     def _materialize(self, asset: dg.AssetsDefinition, key: str, log_level: str) -> PartitionRun:
         result = dg.materialize(
@@ -187,5 +200,6 @@ def build_pipeline(config_path: Path = DEFAULT_CONFIG, *, base_dir: Path | None 
         documents=documents_assets(partitions),
         metrics=metrics_assets(partitions),
         judgments=judgments_assets(partitions),
+        scores=scores_assets(partitions),
         resources={"assay": resource},
     )
