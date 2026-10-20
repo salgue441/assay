@@ -106,7 +106,7 @@ def test_flags_replies_cut_off_at_the_token_limit() -> None:
 def test_matches_untagged_model_names_to_latest() -> None:
     handler, _ = serve(lambda _: httpx.Response(200, json=chat_reply()), "phi4-mini:latest")
 
-    assert client_for(handler, "phi4-mini").revision == DIGEST
+    assert client_for(handler, "phi4-mini").model_revision == DIGEST
 
 
 def test_a_model_that_is_not_pulled_is_a_permanent_error() -> None:

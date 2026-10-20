@@ -27,6 +27,13 @@ class Flaky:
     def model_id(self) -> str:
         return "fake"
 
+    @property
+    def model_revision(self) -> str:
+        self.calls += 1
+        if self.errors:
+            raise self.errors.pop(0)
+        return "r1"
+
     def chat(self, request: ChatRequest) -> ChatResponse:
         self.calls += 1
         if self.errors:
@@ -63,6 +70,13 @@ def test_does_not_retry_permanent_errors() -> None:
 
 def test_exposes_the_inner_model_id() -> None:
     assert retrying(Flaky([])).model_id == "fake"
+
+
+def test_retries_a_transient_failure_to_look_up_the_revision() -> None:
+    inner = Flaky([LLMError("server starting", transient=True)])
+
+    assert retrying(inner).model_revision == "r1"
+    assert inner.calls == 2
 
 
 def test_requires_at_least_one_attempt() -> None:

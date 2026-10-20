@@ -47,7 +47,7 @@ class OllamaClient:
         return self._model_id
 
     @cached_property
-    def revision(self) -> str:
+    def model_revision(self) -> str:
         """The installed model's digest; raises `LLMError` if it is not pulled."""
 
         wanted = _with_tag(self._model_id)
@@ -60,7 +60,7 @@ class OllamaClient:
         raise LLMError(msg, transient=False)
 
     def chat(self, request: ChatRequest) -> ChatResponse:
-        revision = self.revision
+        revision = self.model_revision
         messages = [{"role": "user", "content": request.user}]
         if request.system is not None:
             messages.insert(0, {"role": "system", "content": request.system})

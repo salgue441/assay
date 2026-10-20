@@ -51,6 +51,14 @@ class LLMClient(Protocol):
     @property
     def model_id(self) -> str: ...
 
+    @property
+    def model_revision(self) -> str:
+        """
+        The exact weights behind `model_id`, known before any call, so callers
+        can key cached results on it. Raises `LLMError` if it cannot be found.
+        """
+        ...
+
     def chat(self, request: ChatRequest) -> ChatResponse:
         """Raise `LLMError` if the completion fails."""
         ...
