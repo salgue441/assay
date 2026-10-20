@@ -8,13 +8,16 @@ from assay.drift.distribution import (
     ks_test,
     population_stability_index,
 )
+from assay.drift.rules import consecutive_breaches, sustained_shift
 
 __all__ = [
     "ChartPoint",
     "ShiftResult",
     "TestResult",
+    "consecutive_breaches",
     "distribution_shift",
     "ewma_chart",
     "ks_test",
     "population_stability_index",
+    "sustained_shift",
 ]
