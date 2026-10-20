@@ -39,6 +39,7 @@ class RatedDocument:
 
     document_id: str
     unit_id: str
+    subject: str
     repo: str
     composite: float
     decision: RoutingDecision
@@ -96,6 +97,7 @@ def rated_documents(
             RatedDocument(
                 document_id=score.document_id,
                 unit_id=score.unit_id,
+                subject=score.subject,
                 repo=score.repo,
                 composite=score.composite,
                 decision=score.decision,
@@ -121,6 +123,7 @@ class Disagreement:
 
     document_id: str
     unit_id: str
+    subject: str
     repo: str
     composite: float
     overall: float
@@ -210,6 +213,11 @@ def calibrate(
     judge_kappa: dict[str, dict[str, Estimate]] = {}
     for side, docs in sides.items():
         kept = [d for d in docs if not d.rejected]
+        if len({d.repo for d in docs}) == 1:
+            notes.append(
+                f"{side} intervals: one repository, so the bootstrap resamples documents "
+                "and ignores how documents of a repository resemble each other"
+            )
         correlation[side] = {}
         if fitted is not None:
             fitted_correlation[side] = {}
@@ -268,10 +276,17 @@ def _correlate(
         scores,
         [d.overall for d in documents],
         method=method,
-        groups=[d.repo for d in documents],
+        groups=_clusters([d.repo for d in documents]),
         resamples=resamples,
         seed=seed,
     )
+
+
+def _clusters(repos: Sequence[str]) -> Sequence[str] | None:
+    """Bootstrap clusters: whole repositories, or single documents when
+    there is only one repository to draw."""
+
+    return repos if len(set(repos)) > 1 else None
 
 
 def _kappa(
@@ -286,7 +301,9 @@ def _kappa(
         msg = "no document has both a judge grade and a human rating"
         raise ValueError(msg)
     judge, human, repos = zip(*pairs, strict=True)
-    return weighted_kappa_estimate(judge, human, groups=repos, resamples=resamples, seed=seed)
+    return weighted_kappa_estimate(
+        judge, human, groups=_clusters(repos), resamples=resamples, seed=seed
+    )
 
 
 def _fit(
@@ -386,6 +403,7 @@ def _disagreements(documents: Sequence[RatedDocument]) -> tuple[Disagreement, ..
         Disagreement(
             document_id=d.document_id,
             unit_id=d.unit_id,
+            subject=d.subject,
             repo=d.repo,
             composite=d.composite,
             overall=d.overall,

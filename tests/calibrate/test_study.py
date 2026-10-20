@@ -215,6 +215,19 @@ def test_one_development_repository_keeps_the_prior_weights_and_says_why() -> No
     assert any("at least two development repositories" in note for note in report.notes)
 
 
+def test_one_repository_bootstraps_documents_instead_of_collapsing_the_interval() -> None:
+    documents = join(
+        [score(f"d{i}", repo="o/x" if i < 8 else "o/y", composite=6.0 * i) for i in range(16)],
+        [rating(f"d{i}", overall=[1, 3, 2, 4, 3, 5, 4, 2][i % 8]) for i in range(16)],
+    )
+
+    report = run(documents)
+    rho = report.correlation["dev"]["spearman"]
+
+    assert rho.ci_low < rho.value < rho.ci_high
+    assert any("dev intervals: one repository" in note for note in report.notes)
+
+
 def test_rater_agreement_needs_two_raters() -> None:
     assert run(corpus()).rater_alpha == {}
 
