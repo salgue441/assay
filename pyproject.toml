@@ -105,6 +105,11 @@ markers = [
 [tool.coverage.run]
 branch = true
 source = ["assay"]
+# The Streamlit page runs inside Streamlit's script-runner thread, where
+# coverage.py records no lines (checked with both the C tracer and
+# sys.monitoring). tests/rating/test_app.py exercises it end to end with
+# Streamlit's AppTest instead.
+omit = ["*/assay/rating/app.py"]
 
 [tool.coverage.report]
 fail_under = 80

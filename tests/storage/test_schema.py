@@ -59,6 +59,39 @@ def test_excluded_fields_are_not_stored() -> None:
     assert "secret" not in arrow_schema(Everything).names
 
 
+class Point(BaseModel):
+    x: int
+    label: str | None
+
+
+class Shape(BaseModel):
+    corners: tuple[Point, ...]
+    centre: Point
+
+
+def test_nested_models_become_structs() -> None:
+    point = pa.struct(
+        [pa.field("x", pa.int64(), nullable=False), pa.field("label", pa.string(), nullable=True)]
+    )
+
+    assert arrow_schema(Shape) == pa.schema(
+        [
+            pa.field("corners", pa.list_(pa.field("item", point, nullable=False)), nullable=False),
+            pa.field("centre", point, nullable=False),
+        ]
+    )
+
+
+def test_nested_models_round_trip_through_arrow() -> None:
+    shape = Shape(
+        corners=(Point(x=1, label="a"), Point(x=2, label=None)), centre=Point(x=0, label=None)
+    )
+
+    table = pa.Table.from_pylist([shape.model_dump()], schema=arrow_schema(Shape))
+
+    assert Shape.model_validate(table.to_pylist()[0]) == shape
+
+
 class NaiveTime(BaseModel):
     at: datetime
 

@@ -4,8 +4,6 @@ Readability of a document's prose.
 
 from __future__ import annotations
 
-import textstat
-
 from assay.metrics.base import MetricResult
 from assay.metrics.context import MetricContext
 from assay.metrics.markdown import parse_markdown
@@ -27,6 +25,10 @@ class Readability:
     version = "v1"
 
     def score(self, text: str, context: MetricContext) -> MetricResult:
+        # Imported on first use: textstat loads NLTK at import time, which adds
+        # about five seconds to every command and test process.
+        import textstat  # noqa: PLC0415
+
         prose = parse_markdown(text).prose
         words = textstat.lexicon_count(prose)
         if words < MIN_WORDS:

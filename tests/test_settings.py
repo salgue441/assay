@@ -237,6 +237,16 @@ def test_invalid_judge_settings_fail_at_load(
         load(tmp_path, MINIMAL | change)
 
 
+def test_rating_settings_default_to_a_fifth_overlap(tmp_path: Path) -> None:
+    assert load(tmp_path).rating.additional_rater_share == 0.2
+
+
+@pytest.mark.parametrize("share", [0, 1.5])
+def test_the_overlap_share_must_be_a_fraction(tmp_path: Path, share: float) -> None:
+    with pytest.raises(SettingsError, match="additional_rater_share"):
+        load(tmp_path, MINIMAL | {"rating": {"additional_rater_share": share}})
+
+
 def test_unreadable_files_raise_settings_error(tmp_path: Path) -> None:
     with pytest.raises(SettingsError):
         load_settings(tmp_path / "missing.yaml")

@@ -1,15 +1,21 @@
 """Command-line entry point. Pipeline stages are added here as they are built."""
 
+import importlib.util
+import re
+import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
+import assay.rating
 from assay import __version__
 from assay.corpus import ManifestError
 from assay.orchestrate.pipeline import DEFAULT_CONFIG, PartitionRun, Pipeline, build_pipeline
-from assay.settings import SettingsError
+from assay.rating import RATER_ID_PATTERN
+from assay.settings import SettingsError, load_settings
 
 app = typer.Typer(help="Evaluate LLM-generated documentation and monitor quality drift.")
 
@@ -130,6 +136,57 @@ def judge(
         materialize=Pipeline.materialize_judgments,
         summarize=summarize,
     )
+
+
+@app.command()
+def rate(
+    rater: Annotated[str, typer.Option(help="Your pseudonym, such as r1. Never your name.")],
+    config: ConfigOption = DEFAULT_CONFIG,
+    additional: Annotated[
+        bool,
+        typer.Option(
+            "--additional", help="Rate only the shared overlap subset, as a rater after the first."
+        ),
+    ] = False,
+) -> None:
+    """Open the blind rating app in your browser."""
+
+    if not re.fullmatch(RATER_ID_PATTERN, rater):
+        typer.echo(
+            f"error: rater must be a short lowercase pseudonym such as r1, not {rater!r}", err=True
+        )
+        raise typer.Exit(2)
+    if importlib.util.find_spec("streamlit") is None:
+        typer.echo("error: the rating app needs the app extra: uv sync --extra app", err=True)
+        raise typer.Exit(2)
+    try:
+        settings = load_settings(config)
+    except SettingsError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+
+    share = settings.rating.additional_rater_share if additional else 1.0
+    app_path = Path(assay.rating.__file__).with_name("app.py")
+    command = [
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        str(app_path),
+        # Only this machine can reach the app, and Streamlit sends no usage data.
+        "--server.address",
+        "localhost",
+        "--browser.gatherUsageStats",
+        "false",
+        "--",
+        "--config",
+        str(config),
+        "--rater",
+        rater,
+        "--share",
+        str(share),
+    ]
+    raise typer.Exit(subprocess.run(command, check=False).returncode)
 
 
 def _run_partitions(

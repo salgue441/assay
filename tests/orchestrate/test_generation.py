@@ -98,6 +98,18 @@ def test_generation_needs_the_corpus_first(project: Project, use_llm: Callable[.
     assert not run.succeeded
 
 
+def test_the_command_shows_failed_non_blocking_checks(
+    built: Project, use_llm: Callable[..., None]
+) -> None:
+    use_llm(fail_when=lambda request: "`greeter.core.greet`" in request.user)
+
+    result = CliRunner().invoke(app, ["generate", "--config", str(built.config), "--epoch", "0"])
+
+    assert result.exit_code == 0, result.output
+    assert "1 failed" in result.output
+    assert "(warnings: documents.complete)" in result.output
+
+
 def test_the_generate_command(built: Project, use_llm: Callable[..., None]) -> None:
     result = CliRunner().invoke(app, ["generate", "--config", str(built.config), "--epoch", "0"])
 
