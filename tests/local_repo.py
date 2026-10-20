@@ -1,4 +1,3 @@
-import os
 import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -6,10 +5,10 @@ from datetime import date
 from pathlib import Path
 
 from assay.corpus import RepoSpec
+from assay.corpus.snapshot import isolated_git_env
 from assay.extract import SourceLanguage
 
-_GIT_ENV = {
-    **os.environ,
+_GIT_IDENTITY = {
     "GIT_AUTHOR_NAME": "Test",
     "GIT_AUTHOR_EMAIL": "test@example.com",
     "GIT_COMMITTER_NAME": "Test",
@@ -73,7 +72,7 @@ class LocalRepo:
             ["git", "-C", str(self.path), *args],
             capture_output=True,
             text=True,
-            env={**_GIT_ENV, **(extra_env or {})},
+            env={**isolated_git_env(), **_GIT_IDENTITY, **(extra_env or {})},
             check=True,
         )
         return result.stdout.strip()
