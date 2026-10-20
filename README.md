@@ -91,6 +91,7 @@ uv run assay rate --rater r1    # blind rating app; use a pseudonym, never your 
 uv run assay calibrate          # agreement with the raters in evaluation.raters
 uv run assay calibrate --test   # the held-out test split; meant to be run once
 uv run assay judge-variance     # how much grades and routing move between judge runs
+uv run assay judge-bias         # length bias and self-preference of every judge
 uv run assay golden-set         # freeze rated development documents for monitoring
 
 # Monitor
@@ -128,7 +129,7 @@ Still to come: the dbt marts (`transform/`), the dashboard and report, and the S
 
 - **Split.** Development/test split by repository, balanced by language and unit kind; weights, routing thresholds and the baseline are chosen on development. Every evaluation of the test split is logged, and evaluating it again under a changed configuration is refused unless forced.
 - **Calibration.** Spearman and Kendall correlation with bootstrap 95% intervals resampled by repository; Krippendorff's alpha across raters sets the ceiling on achievable agreement.
-- **Judge checks.** Quadratic-weighted kappa per criterion, and the spread of grades and routing decisions across repeated runs at temperature 0 and 0.7. Length and self-preference bias tests are planned.
+- **Judge checks.** Quadratic-weighted kappa per criterion; the spread of grades and routing decisions across repeated runs at temperature 0 and 0.7; length bias (rank correlation of grade with word count, controlling for the human grade once enough documents are rated); and self-preference (how much more a judge favours its own model family than a judge of another family does, unit by unit).
 - **Ablations.** Each component, the judge and the critical-failure rule are removed in turn to show which parts earn their place.
 - **Learned baseline.** Ridge and gradient-boosted models predict the human rating from static metrics and text features, with no LLM call, to measure how much of the judge's value they recover.
 - **Drift.** KS test and PSI on score distributions, EWMA control charts per metric, a binomial test on the rejection rate, and a frozen golden set that separates "the subject model got worse" from "the judge drifted".

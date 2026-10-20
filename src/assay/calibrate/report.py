@@ -9,6 +9,7 @@ import json
 from collections.abc import Mapping, Sequence
 
 from assay.calibrate.ablation import AblationStudy
+from assay.calibrate.bias import BiasStudy
 from assay.calibrate.bootstrap import Estimate
 from assay.calibrate.study import CalibrationReport
 from assay.calibrate.variance import VarianceStudy
@@ -172,3 +173,44 @@ def variance_text(studies: Sequence[VarianceStudy], *, stability_target: float) 
             for u in study.unstable
         ]
     return "\n".join(lines) if lines else "no repeated judgments found"
+
+
+def bias_json(study: BiasStudy) -> str:
+    return json.dumps(dataclasses.asdict(study), indent=2, sort_keys=True) + "\n"
+
+
+def bias_text(study: BiasStudy) -> str:
+    lines: list[str] = []
+    if study.length:
+        lines.append("Length bias: Spearman rho of grade on word count")
+        lines += [
+            f"  {b.judge:<14} {b.criterion:<14} {_interval(b.rho)}  n={b.rho.n}  "
+            + ("controlling for human grades" if b.controlled else "uncontrolled")
+            + ("  EVIDENT" if b.evident else "")
+            for b in study.length
+        ]
+        if not all(b.controlled for b in study.length):
+            lines.append(
+                "  uncontrolled: too few human ratings, so longer documents that really "
+                "are better also raise rho"
+            )
+    if study.self_preference:
+        if lines:
+            lines.append("")
+        lines.append("Self-preference: own-family grade gap minus a reference judge's (points)")
+        lines += [
+            f"  {p.judge:<14} vs {p.reference:<14} {p.criterion:<14} {_interval(p.effect)}  "
+            f"units={p.effect.n}  gaps {p.judge_gap:+.2f} / {p.reference_gap:+.2f}"
+            + ("  EVIDENT" if p.evident else "")
+            for p in study.self_preference
+        ]
+    if study.skipped:
+        if lines:
+            lines.append("")
+        lines.append("Not tested")
+        lines += [f"  {reason}" for reason in study.skipped]
+    return "\n".join(lines) if lines else "no judged documents found"
+
+
+def _interval(e: Estimate) -> str:
+    return f"{e.value:+6.3f}  [{e.ci_low:+6.3f}, {e.ci_high:+6.3f}]"

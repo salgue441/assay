@@ -1,5 +1,6 @@
 import json
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 import yaml
@@ -222,3 +223,17 @@ def test_the_score_command_reports_missing_documents(project: Project) -> None:
 
     assert result.exit_code == 1
     assert f"FAILED {PARTITION:<40} no documents stored" in result.output
+
+
+def test_the_judge_bias_command(judged: Project, tmp_path: Path) -> None:
+    output = tmp_path / "bias.json"
+
+    result = CliRunner().invoke(
+        app, ["judge-bias", "--config", str(judged.config), "--output", str(output)]
+    )
+
+    # Every grade is 4, and the only judge shares the subject's model.
+    assert result.exit_code == 0, result.output
+    assert "length bias of grader on accuracy: grades, lengths or human grades" in result.output
+    assert "self-preference of grader: no judge of another family" in result.output
+    assert json.loads(output.read_text(encoding="utf-8"))["length"] == []

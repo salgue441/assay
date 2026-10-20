@@ -449,16 +449,30 @@ def _current_metric_rows(rows: Iterable[MetricRow], metrics: Iterable[Metric]) -
 def scoring_judgments(
     judgments: Iterable[Judgment], settings: Settings, *, any_temperature: bool = False
 ) -> list[Judgment]:
+    """The scoring judge's grades from the main judging configuration: see `judge_judgments`."""
+
+    return judge_judgments(
+        judgments, settings, settings.scoring.judge, any_temperature=any_temperature
+    )
+
+
+def judge_judgments(
+    judgments: Iterable[Judgment],
+    settings: Settings,
+    judge: str,
+    *,
+    any_temperature: bool = False,
+) -> list[Judgment]:
     """
-    The scoring judge's grades from the main judging configuration: its
-    configured model and temperature, the current rubric and reply schema,
-    the configured output limit and the run seed (run `i` is judged with
-    seed `run.seed + i`). `any_temperature` also
-    keeps grades at other temperatures, such as the variance study's.
+    The grades of the configured judge named `judge` from the main judging
+    configuration: its configured model and temperature, the current rubric
+    and reply schema, the configured output limit and the run seed (run `i`
+    is judged with seed `run.seed + i`). `any_temperature` also keeps grades
+    at other temperatures, such as the variance study's.
     """
 
     judging = settings.judge
-    (model,) = (m for m in judging.models if m.name == settings.scoring.judge)
+    (model,) = (m for m in judging.models if m.name == judge)
     rubric_hash = judging.rubric().hash
     return [
         judgment
