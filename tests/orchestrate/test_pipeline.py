@@ -6,7 +6,12 @@ import dagster as dg
 import pytest
 
 from assay.corpus import SOURCES, UNITS
-from assay.orchestrate import BUILD_CORPUS_JOB, CONTRACT_CHECK, build_pipeline
+from assay.orchestrate import (
+    BUILD_CORPUS_JOB,
+    CONTRACT_CHECK,
+    GENERATE_DOCUMENTS_JOB,
+    build_pipeline,
+)
 from assay.storage import ContractError, ParquetStore
 
 from .project import Project
@@ -20,7 +25,11 @@ def test_materializes_and_checks_every_corpus_table(project: Project) -> None:
     run = pipeline.materialize_corpus("owner__greeter@01", log_level="WARNING")
 
     assert run.succeeded
-    assert run.rows == {"sources": 1, "units": 3, "symbols": 3}
+    assert {table: counts["rows"] for table, counts in run.metadata.items()} == {
+        "sources": 1,
+        "units": 3,
+        "symbols": 3,
+    }
     store = ParquetStore(project.data)
     (snapshot,) = store.read(SOURCES)
     assert (snapshot.repo, snapshot.epoch, snapshot.commit) == (
@@ -63,19 +72,21 @@ def test_a_stored_partition_that_breaks_its_contract_fails_the_run(
     run = build_pipeline(project.config).materialize_corpus("owner__greeter@00", log_level="ERROR")
 
     assert not run.succeeded
-    assert run.rows == {}
+    assert all("rows" not in counts for counts in run.metadata.values())
 
 
-def test_definitions_load_with_a_corpus_job(project: Project) -> None:
+def test_definitions_load_with_a_job_per_stage(project: Project) -> None:
     defs = build_pipeline(project.config).definitions()
 
-    job = defs.resolve_job_def(BUILD_CORPUS_JOB)
-    assert job.partitions_def is not None
-    assert job.partitions_def.get_partition_keys() == ["owner__greeter@00", "owner__greeter@01"]
+    for name in (BUILD_CORPUS_JOB, GENERATE_DOCUMENTS_JOB):
+        job = defs.resolve_job_def(name)
+        assert job.partitions_def is not None
+        assert job.partitions_def.get_partition_keys() == ["owner__greeter@00", "owner__greeter@01"]
     assert {key.to_user_string() for key in defs.resolve_all_asset_keys()} == {
         "sources",
         "units",
         "symbols",
+        "documents",
     }
 
 

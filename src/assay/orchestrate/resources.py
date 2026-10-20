@@ -9,6 +9,8 @@ from pathlib import Path
 import dagster as dg
 
 from assay.corpus import CorpusBuilder, GitSnapshotFetcher
+from assay.generate import Budget, DocumentGenerator, Subject
+from assay.llm import create_client
 from assay.settings import Settings, load_settings
 from assay.storage import ParquetStore
 
@@ -39,3 +41,22 @@ class AssayResource(dg.ConfigurableResource):  # type: ignore[type-arg]
 
     def store(self, settings: Settings) -> ParquetStore:
         return ParquetStore(settings.storage.root)
+
+    def document_generator(self, settings: Settings) -> DocumentGenerator:
+        generation = settings.generation
+        subjects = [
+            Subject(
+                name=subject.name,
+                provider=subject.provider,
+                client=create_client(subject.provider, subject.model_id),
+                temperature=subject.temperature,
+            )
+            for subject in generation.subjects
+        ]
+        return DocumentGenerator(
+            subjects,
+            generation.prompt(),
+            seed=settings.run.seed,
+            max_output_tokens=generation.max_output_tokens,
+            budget=Budget(settings.run.budget_usd),
+        )
