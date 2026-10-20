@@ -44,7 +44,7 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 }
 
 $pythonVersion = (Get-Content (Join-Path $root ".python-version") -TotalCount 1).Trim()
-$syncArgs = @("sync", "--locked", "--extra", "app")
+$syncArgs = @("sync", "--locked", "--extra", "app", "--extra", "bedrock", "--extra", "openai")
 if ($AllExtras) { $syncArgs += "--all-extras" }
 
 $conda = if ($NoConda) { $null } else { Find-Conda }

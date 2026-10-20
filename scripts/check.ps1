@@ -36,7 +36,7 @@ function Invoke-Step {
 
 if (-not $NoSync) {
     # --inexact keeps conda-installed packages when syncing into a conda env.
-    $sync = @("uv", "sync", "--locked", "--extra", "app")
+    $sync = @("uv", "sync", "--locked", "--extra", "app", "--extra", "bedrock", "--extra", "openai")
     if ($env:UV_PROJECT_ENVIRONMENT) { $sync += "--inexact" }
     Invoke-Step "Sync dependencies" $sync
 }

@@ -31,7 +31,7 @@ command -v uv >/dev/null || {
 }
 
 python_version="$(head -n1 .python-version | tr -d '[:space:]')"
-sync_args=(sync --locked --extra app)
+sync_args=(sync --locked --extra app --extra bedrock --extra openai)
 $all_extras && sync_args+=(--all-extras)
 
 find_conda() {
