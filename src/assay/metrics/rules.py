@@ -27,6 +27,12 @@ class LanguageRules(Protocol):
         standard library modules and the attributes of builtin types."""
         ...
 
+    @property
+    def constructor_name(self) -> str | None:
+        """The method name of a class constructor, or None if the language
+        has no constructor methods."""
+        ...
+
     def parameters(self, signature: str) -> tuple[str, ...]:
         """Parameter names of a function signature, excluding the receiver."""
         ...
@@ -57,6 +63,10 @@ class PythonRules:
     @property
     def ambient_names(self) -> frozenset[str]:
         return _PYTHON_AMBIENT_NAMES
+
+    @property
+    def constructor_name(self) -> str:
+        return "__init__"
 
     def parameters(self, signature: str) -> tuple[str, ...]:
         function = _parse_function(signature)

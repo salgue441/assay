@@ -53,3 +53,7 @@ def test_get_rules() -> None:
         get_rules("go")
     with pytest.raises(UnsupportedLanguageError, match="unknown language"):
         get_rules("cobol")
+
+
+def test_constructor_name() -> None:
+    assert RULES.constructor_name == "__init__"
