@@ -238,7 +238,9 @@ class SplitSettings(_Section):
     development_fraction: float = Field(gt=0, lt=1)
     group_by: Literal["repo"] = "repo"
     """No group appears in both splits."""
-    stratify_by: tuple[str, ...] = ()
+    stratify_by: tuple[Literal["language", "unit_kind"], ...] = ()
+    """Variables to balance across the splits. A contamination group joins
+    these once the contamination check dates each unit."""
 
 
 class WeightFitSettings(_Section):

@@ -21,7 +21,7 @@ from assay.calibrate.baseline import MODELS, feature_matrix, fit_and_predict, ou
 from assay.calibrate.bootstrap import Estimate
 from assay.calibrate.correlation import RankMethod, rank_correlation
 from assay.calibrate.decisions import DecisionQuality, Routing, choose_routing, routed
-from assay.calibrate.split import Split, grouped_split
+from assay.calibrate.split import Split, grouped_split, stratified_grouped_split
 from assay.calibrate.weights import choose_shrinkage, fit_weights
 from assay.judge import MAX_SCORE, MIN_SCORE
 from assay.rating import Decision, Rating
@@ -57,6 +57,8 @@ class RatedDocument:
     """Median rating per criterion across raters, rounded half up."""
     human_decision: Decision | None
     """The raters' shared decision, or None when they disagree."""
+    strata: Mapping[str, str] = field(default_factory=dict)
+    """Values of the variables the split balances, such as language."""
 
     @property
     def rejected(self) -> bool:
@@ -78,11 +80,13 @@ def rated_documents(
     raters: Sequence[str],
     scorer_version: str,
     rubric_hash: str,
+    strata: Mapping[str, Mapping[str, str]] | None = None,
 ) -> list[RatedDocument]:
     """
     The documents scored under `scorer_version` and rated by at least one
     of `raters` under the rubric with `rubric_hash`, sorted by document id.
-    Ratings by anyone not in `raters` are ignored.
+    Ratings by anyone not in `raters` are ignored. `strata` gives each
+    document's stratum values by document id.
     """
 
     allowed = set(raters)
@@ -117,6 +121,7 @@ def rated_documents(
                     for name in criteria
                 },
                 human_decision=decisions.pop() if len(decisions) == 1 else None,
+                strata=(strata or {}).get(score.document_id, {}),
             )
         )
     return sorted(documents, key=lambda d: d.document_id)
@@ -202,14 +207,16 @@ def calibrate(
     seed: int,
     include_test: bool,
     texts: Mapping[str, str],
+    stratify_by: Sequence[str] = (),
 ) -> CalibrationReport:
     """
     Split `documents` by repository, fit weights on the development side
     and measure agreement with the raters on each reported side. `texts`
-    holds each document's text by id, for the learned baseline. A result
+    holds each document's text by id, for the learned baseline; `stratify_by`
+    names the stratum variables the split balances. A result
     that cannot be computed, such as a correlation over constant ratings,
     is left out and explained in `notes`. Raises `ValueError` when the
-    documents come from fewer than two repositories.
+    documents come from fewer than two repositories or lack a stratum value.
     """
 
     repos = {d.repo for d in documents}
@@ -221,11 +228,27 @@ def calibrate(
         raise ValueError(msg)
 
     notes: list[str] = []
-    split = grouped_split(
-        documents,
-        group_of=lambda d: d.repo,
-        test_fraction=1 - development_fraction,
-        seed=seed,
+    unstratified = [
+        d.document_id[:12] for d in documents if any(v not in d.strata for v in stratify_by)
+    ]
+    if unstratified:
+        msg = f"documents without {', '.join(stratify_by)}: {', '.join(unstratified[:5])}"
+        raise ValueError(msg)
+    split = (
+        stratified_grouped_split(
+            documents,
+            group_of=lambda d: d.repo,
+            strata_of=lambda d: {v: d.strata[v] for v in stratify_by},
+            test_fraction=1 - development_fraction,
+            seed=seed,
+        )
+        if stratify_by
+        else grouped_split(
+            documents,
+            group_of=lambda d: d.repo,
+            test_fraction=1 - development_fraction,
+            seed=seed,
+        )
     )
     sides = {"dev": split.dev, **({"test": split.test} if include_test else {})}
 
