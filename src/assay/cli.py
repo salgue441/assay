@@ -12,10 +12,14 @@ import typer
 
 import assay.rating
 from assay import __version__
+from assay.calibrate import calibrate, rated_documents
+from assay.calibrate.report import report_json, report_text
 from assay.corpus import ManifestError
 from assay.orchestrate.pipeline import DEFAULT_CONFIG, PartitionRun, Pipeline, build_pipeline
-from assay.rating import RATER_ID_PATTERN
+from assay.rating import RATER_ID_PATTERN, RATINGS
+from assay.scoring import SCORES, ScorerConfig
 from assay.settings import SettingsError, load_settings
+from assay.storage import ParquetStore
 
 app = typer.Typer(help="Evaluate LLM-generated documentation and monitor quality drift.")
 
@@ -216,6 +220,104 @@ def rate(
         str(share),
     ]
     raise typer.Exit(subprocess.run(command, check=False).returncode)
+
+
+@app.command("calibrate")
+def calibrate_command(
+    config: ConfigOption = DEFAULT_CONFIG,
+    rater: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="Calibrate against this rater instead of evaluation.raters; repeatable. "
+            "Use it to inspect other raters, never to report human agreement."
+        ),
+    ] = None,
+    test: Annotated[
+        bool,
+        typer.Option("--test", help="Also evaluate the held-out test split. Do this once."),
+    ] = False,
+    resamples: Annotated[
+        int | None,
+        typer.Option(min=1, help="Bootstrap resamples, instead of evaluation.bootstrap_resamples."),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option(help="Where to write the JSON report. [default: <storage>/reports/]"),
+    ] = None,
+) -> None:
+    """Compare the composite score with human ratings and report the agreement."""
+
+    try:
+        settings = load_settings(config)
+        rubric_hash = settings.judge.rubric().hash
+    except SettingsError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    evaluation = settings.evaluation
+    if evaluation is None:
+        typer.echo("error: calibrating needs an evaluation section in the config", err=True)
+        raise typer.Exit(2)
+    raters = tuple(rater) if rater else evaluation.raters
+    invalid = [r for r in raters if not re.fullmatch(RATER_ID_PATTERN, r)]
+    if invalid:
+        typer.echo(f"error: raters must be short lowercase pseudonyms: {invalid}", err=True)
+        raise typer.Exit(2)
+    unlisted = sorted(set(raters) - set(evaluation.raters))
+    if unlisted:
+        typer.echo(
+            f"warning: {', '.join(unlisted)} not in evaluation.raters; "
+            "these results are not human agreement",
+            err=True,
+        )
+
+    scoring = settings.scoring
+    scorer = ScorerConfig(
+        weights=scoring.weights,
+        judge=scoring.judge,
+        publish_at_or_above=scoring.routing.publish_at_or_above,
+        escalate_below=scoring.routing.escalate_below,
+    )
+    store = ParquetStore(settings.storage.root)
+    documents = rated_documents(
+        store.read(SCORES),
+        store.read(RATINGS),
+        raters=raters,
+        scorer_version=scorer.version,
+        rubric_hash=rubric_hash,
+    )
+    if not documents:
+        typer.echo(
+            f"error: no document scored by scorer {scorer.version} is rated by "
+            f"{', '.join(raters)} under rubric {settings.judge.rubric_version}",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    try:
+        report = calibrate(
+            documents,
+            prior=scoring.weights,
+            development_fraction=evaluation.split.development_fraction,
+            shrink_to_prior=evaluation.weight_fit.shrink_to_prior,
+            resamples=resamples or evaluation.bootstrap_resamples,
+            seed=settings.run.seed,
+            include_test=test,
+        )
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    path = output or settings.storage.root / "reports" / f"calibration-{scorer.version}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(report_json(report), encoding="utf-8")
+    typer.echo(
+        report_text(
+            report,
+            rho_target=evaluation.targets.spearman_rho,
+            kappa_target=evaluation.targets.weighted_kappa,
+        )
+    )
+    typer.echo(f"\nreport written to {path}")
 
 
 def _run_partitions(

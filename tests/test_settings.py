@@ -254,6 +254,48 @@ def test_the_overlap_share_must_be_a_fraction(tmp_path: Path, share: float) -> N
         load(tmp_path, MINIMAL | {"rating": {"additional_rater_share": share}})
 
 
+EVALUATION = {
+    "raters": ["r1", "r2"],
+    "split": {"development_fraction": 0.6},
+    "targets": {"spearman_rho": 0.7, "weighted_kappa": 0.6, "judge_band_stability": 0.9},
+}
+
+
+def evaluation(**changes: object) -> dict[str, object]:
+    return {"evaluation": EVALUATION | changes}
+
+
+def test_evaluation_settings_are_optional(tmp_path: Path) -> None:
+    assert load(tmp_path).evaluation is None
+
+
+def test_evaluation_settings_load_with_defaults(tmp_path: Path) -> None:
+    settings = load(tmp_path, MINIMAL | evaluation()).evaluation
+
+    assert settings is not None
+    assert settings.raters == ("r1", "r2")
+    assert settings.split.group_by == "repo"
+    assert settings.weight_fit.shrink_to_prior
+    assert settings.bootstrap_resamples == 10_000
+
+
+@pytest.mark.parametrize(
+    ("change", "problem"),
+    [
+        (evaluation(raters=[]), "at least 1 item"),
+        (evaluation(raters=["Carlos"]), "pseudonyms such as r1: Carlos"),
+        (evaluation(raters=["r1", "r1"]), "raters must be unique"),
+        (evaluation(split={"development_fraction": 1}), "less than 1"),
+        (evaluation(split={"development_fraction": 0.6, "group_by": "language"}), "'repo'"),
+    ],
+)
+def test_invalid_evaluation_settings_fail_at_load(
+    tmp_path: Path, change: dict[str, object], problem: str
+) -> None:
+    with pytest.raises(SettingsError, match=problem):
+        load(tmp_path, MINIMAL | change)
+
+
 def test_unreadable_files_raise_settings_error(tmp_path: Path) -> None:
     with pytest.raises(SettingsError):
         load_settings(tmp_path / "missing.yaml")

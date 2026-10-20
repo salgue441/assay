@@ -49,6 +49,7 @@ coverage.xml
 /data/**/*.csv
 /data/raw/
 /data/cache/
+/data/reports/
 *.duckdb
 *.duckdb.wal
 .dvc/cache
