@@ -132,7 +132,7 @@ class _SymbolCollector:
             return
 
         name_node = node.child_by_field_name("name")
-        if name_node is None:  # pragma: no cover - the grammar requires a name here
+        if name_node is None or name_node.is_missing:  # pragma: no cover - error recovery only
             return
 
         name = node_text(name_node, self._data)
@@ -187,6 +187,8 @@ class _SymbolCollector:
         for member in body.named_children:
             name_node = member.child_by_field_name("name")
             if name_node is None or name_node.type not in _MEMBER_NAMES:
+                continue
+            if name_node.is_missing:  # inserted by error recovery; it has no text
                 continue
 
             signature = self._member_signature(member)

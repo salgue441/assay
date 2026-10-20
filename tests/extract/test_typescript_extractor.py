@@ -553,6 +553,17 @@ def test_never_raises_on_typescript_like_fragments(parts: list[str]) -> None:
     assert inventory.symbols[0].kind is SymbolKind.MODULE
 
 
+def test_a_member_whose_name_the_parser_had_to_invent_is_skipped(
+    extractor: TypeScriptExtractor,
+) -> None:
+    """Regression: error recovery parses `(a: number)` in a class body as a
+    method with a zero-width name, and an empty symbol name failed validation."""
+
+    inventory = extract(extractor, "class C { (a: number) }")
+
+    assert [s.qualified_name for s in inventory.symbols] == ["lib.mod", "lib.mod.C"]
+
+
 def test_large_files_extract_without_crashing() -> None:
     """
     Regression: py-tree-sitter 0.26.0 corrupts node memory on files of a few
