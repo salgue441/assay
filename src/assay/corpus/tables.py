@@ -36,7 +36,7 @@ def symbol_rows(corpus: SnapshotCorpus) -> tuple[SymbolRow, ...]:
     snapshot = corpus.snapshot
     return tuple(
         SymbolRow(
-            **symbol.model_dump(exclude=set(Symbol.model_computed_fields)),
+            **symbol.model_dump(),
             repo=snapshot.repo,
             commit=snapshot.commit,
             path=inventory.path,

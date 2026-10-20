@@ -9,11 +9,12 @@ from assay.metrics.integrity import ReferentialIntegrity, code_references
 from assay.metrics.markdown import Heading, MarkdownParts, parse_markdown
 from assay.metrics.measure import METRICS_TABLE, MetricRow, measure, static_metrics
 from assay.metrics.readability import Readability
-from assay.metrics.rules import LanguageRules, PythonRules, get_rules
+from assay.metrics.rules import GoRules, LanguageRules, PythonRules, TypeScriptRules, get_rules
 from assay.metrics.structure import StructuralCompleteness, required_sections
 
 __all__ = [
     "METRICS_TABLE",
+    "GoRules",
     "Heading",
     "LanguageRules",
     "MarkdownParts",
@@ -26,6 +27,7 @@ __all__ = [
     "ReferentialIntegrity",
     "StructuralCompleteness",
     "SymbolCoverage",
+    "TypeScriptRules",
     "code_references",
     "expected_names",
     "get_rules",

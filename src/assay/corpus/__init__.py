@@ -5,7 +5,7 @@ documentation units cut from them.
 
 from assay.corpus.builder import CorpusBuilder, SnapshotCorpus
 from assay.corpus.discovery import SourceFile, discover_sources
-from assay.corpus.layout import LanguageLayout, PythonLayout, get_layout
+from assay.corpus.layout import GoLayout, LanguageLayout, PythonLayout, TypeScriptLayout, get_layout
 from assay.corpus.manifest import (
     CommitSha,
     DisallowedLicenseError,
@@ -40,6 +40,7 @@ __all__ = [
     "CorpusBuilder",
     "DisallowedLicenseError",
     "GitSnapshotFetcher",
+    "GoLayout",
     "LanguageLayout",
     "Manifest",
     "ManifestError",
@@ -51,6 +52,7 @@ __all__ = [
     "SnapshotFetcher",
     "SourceFile",
     "SymbolRow",
+    "TypeScriptLayout",
     "Unit",
     "UnitPolicy",
     "changed_units",
