@@ -78,6 +78,32 @@ def generate(
     )
 
 
+@app.command()
+def measure(
+    config: ConfigOption = DEFAULT_CONFIG,
+    repo: RepoOption = None,
+    epoch: EpochOption = None,
+    verbose: VerboseOption = False,
+) -> None:
+    """Compute the static metrics for each repository epoch's documents."""
+
+    def summarize(run: PartitionRun) -> str:
+        counts = run.metadata.get("metrics", {})
+        return (
+            f"{counts.get('rows', 0)} metric values for {counts.get('documents', 0)} documents, "
+            f"{counts.get('critical', 0)} critical"
+        )
+
+    _run_partitions(
+        config,
+        repo=repo,
+        epoch=epoch,
+        verbose=verbose,
+        materialize=Pipeline.materialize_metrics,
+        summarize=summarize,
+    )
+
+
 def _run_partitions(
     config: Path,
     *,
@@ -92,6 +118,8 @@ def _run_partitions(
 
     Exits 1 if any partition fails and 2 for an invalid config or an empty
     selection. Failed non-blocking checks are shown but do not fail the run.
+    A failure prints its reason on the partition's line; Dagster's own logs
+    appear only with --verbose.
     """
 
     try:
@@ -107,10 +135,10 @@ def _run_partitions(
 
     failed = 0
     for key in keys:
-        run = materialize(pipeline, key, log_level="INFO" if verbose else "WARNING")
+        run = materialize(pipeline, key, log_level="INFO" if verbose else "CRITICAL")
         failed += not run.succeeded
         status = "ok" if run.succeeded else "FAILED"
-        details = summarize(run) if run.succeeded else "see --verbose for the error"
+        details = summarize(run) if run.succeeded else (run.error or "unknown error")
         if run.warnings:
             details += f" (warnings: {', '.join(run.warnings)})"
         typer.echo(f"{status:<6} {key:<40} {details}")

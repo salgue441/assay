@@ -12,6 +12,7 @@ import dagster as dg
 
 from assay.corpus import SOURCES, SYMBOLS, UNITS, store_snapshot_corpus
 from assay.generate import DOCUMENTS, sample_units
+from assay.metrics import METRICS_TABLE, get_rules, measure
 from assay.orchestrate.partitions import CorpusPartitions
 from assay.orchestrate.resources import AssayResource
 from assay.records import Record
@@ -19,6 +20,7 @@ from assay.storage import ContractError, ParquetStore, Partition, TableSpec
 
 CORPUS_GROUP = "corpus"
 GENERATION_GROUP = "generation"
+SCORING_GROUP = "scoring"
 CONTRACT_CHECK = "contract"
 COMPLETE_CHECK = "complete"
 
@@ -27,6 +29,7 @@ _DESCRIPTIONS = {
     UNITS.name: "Documentation units: modules and public top-level classes and functions.",
     SYMBOLS.name: "Every extracted symbol with its signature, docstring and file.",
     DOCUMENTS.name: "Documentation written by each subject model for the sampled units.",
+    METRICS_TABLE.name: "Deterministic metrics per document, each with an explanation.",
 }
 
 CORPUS_TABLES: tuple[TableSpec[Record], ...] = (SOURCES, UNITS, SYMBOLS)  # type: ignore[assignment]
@@ -177,12 +180,70 @@ def documents_assets(partitions: CorpusPartitions) -> dg.AssetsDefinition:
     return generation
 
 
+def metrics_assets(partitions: CorpusPartitions) -> dg.AssetsDefinition:
+    """
+    Every static metric for every document of a repository epoch.
+
+    Metrics are deterministic and cheap, so the partition is recomputed in
+    full on every run; a new metric version simply adds its rows.
+    """
+
+    @dg.multi_asset(
+        name="static_metrics",
+        specs=[
+            dg.AssetSpec(
+                METRICS_TABLE.name,
+                group_name=SCORING_GROUP,
+                description=_DESCRIPTIONS[METRICS_TABLE.name],
+                deps=[DOCUMENTS.name, UNITS.name, SYMBOLS.name],
+            )
+        ],
+        check_specs=[_contract_check_spec(METRICS_TABLE)],  # type: ignore[arg-type]
+        partitions_def=partitions.definition,
+    )
+    def static_metrics(context: dg.AssetExecutionContext, assay: AssayResource) -> AssetEvents:
+        repo, epoch = partitions.resolve(context.partition_key)
+        settings = assay.settings()
+        store = assay.store(settings)
+
+        documents = store.read(DOCUMENTS, repo=repo.name, epoch=epoch)
+        if not documents:
+            msg = f"no documents stored for {context.partition_key}; run generate first"
+            raise dg.Failure(msg)
+
+        rows = measure(
+            documents,
+            store.read(UNITS, repo=repo.name, epoch=epoch),
+            store.read(SYMBOLS, repo=repo.name, epoch=epoch),
+            metrics=assay.static_metrics(settings),
+            rules=get_rules(repo.language),
+        )
+        partition = Partition(repo.name, epoch)
+        store.write(METRICS_TABLE, rows, partition)
+
+        values: dict[str, list[float]] = {}
+        for row in rows:
+            values.setdefault(row.metric, []).append(row.value)
+        yield from _materialize_and_check(
+            store,
+            METRICS_TABLE,  # type: ignore[arg-type]
+            partition,
+            metadata={
+                "documents": len(documents),
+                "critical": sum(row.critical for row in rows),
+                **{f"mean_{name}": round(sum(v) / len(v), 4) for name, v in values.items()},
+            },
+        )
+
+    return static_metrics
+
+
 def _materialize_and_check(
     store: ParquetStore,
     table: TableSpec[Record],
     partition: Partition,
     *,
-    metadata: Mapping[str, str | int],
+    metadata: Mapping[str, str | int | float],
 ) -> AssetEvents:
     try:
         rows = store.read(table, repo=partition.repo, epoch=partition.epoch)

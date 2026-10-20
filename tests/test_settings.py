@@ -25,6 +25,11 @@ MINIMAL = {
         "prompt_dir": str(PROJECT_ROOT / "config" / "prompts" / "generation"),
         "subjects": [{"name": "writer", "provider": "ollama", "model_id": "phi4-mini"}],
     },
+    "scoring": {
+        "weights": {"referential_integrity": 0.5, "readability": 0.5},
+        "critical_failures": {"referential_integrity_below": 0.9},
+        "routing": {"publish_at_or_above": 80, "escalate_below": 50},
+    },
 }
 
 
@@ -151,6 +156,42 @@ def test_generation_settings_load_the_prompt(tmp_path: Path) -> None:
     ],
 )
 def test_invalid_generation_settings_fail_at_load(
+    tmp_path: Path, change: dict[str, object], problem: str
+) -> None:
+    with pytest.raises(SettingsError, match=problem):
+        load(tmp_path, MINIMAL | change)
+
+
+def scoring(**changes: object) -> dict[str, object]:
+    return {"scoring": MINIMAL["scoring"] | changes}
+
+
+def test_scoring_settings_load() -> None:
+    settings = load_settings(
+        PROJECT_ROOT / "config" / "default.yaml", base_dir=PROJECT_ROOT, environ={}
+    )
+
+    assert settings.scoring.critical_failures.referential_integrity_below == 0.9
+    assert sum(settings.scoring.weights.values()) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize(
+    ("change", "problem"),
+    [
+        (scoring(weights={"a": 0.5, "b": 0.4}), "weights must sum to 1, got 0.900000"),
+        (scoring(weights={"a": 1.5, "b": -0.5}), "must not be negative: b"),
+        (scoring(weights={}), "at least 1 item"),
+        (
+            scoring(routing={"publish_at_or_above": 50, "escalate_below": 80}),
+            "escalate_below must not exceed",
+        ),
+        (
+            scoring(critical_failures={"referential_integrity_below": 1.2}),
+            "less than or equal to 1",
+        ),
+    ],
+)
+def test_invalid_scoring_settings_fail_at_load(
     tmp_path: Path, change: dict[str, object], problem: str
 ) -> None:
     with pytest.raises(SettingsError, match=problem):
